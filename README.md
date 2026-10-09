@@ -6,6 +6,9 @@ Velocity is a self-hosted file manager. You run it on your own computer or serve
 
 It runs on Windows and Linux.
 
+<img width="1280" height="656" alt="iuehwsrfjowieiuhfwfe" src="https://github.com/user-attachments/assets/23db06c2-9a8e-431f-a581-fa47804515f0" />
+
+
 ## Features
 
 - Accounts with a login. The first account created is the owner.
