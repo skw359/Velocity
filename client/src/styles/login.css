@@ -1,0 +1,507 @@
+/* Auth pages (login + signup). Reads global.css theme tokens; the var()
+   fallbacks keep the dark look if global.css hasn't loaded. */
+
+.login-page {
+    /* Auth-scoped aliases. Change these, not the rules below. */
+    --auth-bg:            var(--bg-page, #0b0d15);
+    --auth-surface:       var(--bg-card, #181a26);
+    --auth-text:          var(--text-main, #ffffff);
+    --auth-muted:         var(--text-muted, rgba(255, 255, 255, 0.6));
+    --auth-accent:        var(--accent-color, #768ff5);
+    --auth-accent-hover:  var(--accent-hover, #5264aa);
+    --auth-input-bg:      var(--input-bg, rgba(0, 0, 0, 0.2));
+    --auth-input-border:  var(--input-border, rgba(255, 255, 255, 0.1));
+    --auth-radius:        var(--border-radius-md, 8px);
+
+    /* Text links; the light theme pins its own. */
+    --auth-link:          var(--auth-accent);
+    --auth-link-hover:    var(--auth-accent-hover);
+
+    /* Background field, dark (form side) to lit (art side). */
+    --auth-field-a:   #07080f;
+    --auth-field-b:   #0d1024;
+    --auth-field-c:   #1b2050;
+    --auth-glow-warm: rgba(118, 143, 245, 0.24);
+    --auth-glow-cool: rgba(160, 120, 255, 0.26);
+    --auth-vignette:  #05060c;
+
+    /* Art-panel ink + the mock cards drawn on it. */
+    --auth-art-ink:    #ffffff;
+    --auth-art-ink-dim: rgba(255, 255, 255, 0.62);
+    --auth-card-bg:    rgba(255, 255, 255, 0.07);
+    --auth-card-line:  rgba(255, 255, 255, 0.13);
+    --auth-card-fill:  rgba(255, 255, 255, 0.28);
+    --auth-card-chrome: rgba(255, 255, 255, 0.05);
+    --auth-card-shadow: rgba(0, 0, 0, 0.45);
+
+    font-family: 'Montserrat', sans-serif;
+    color: var(--auth-text);
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: grid;
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+
+    /* One background across both columns so there's no seam between them. */
+    position: relative;
+    background-color: var(--auth-field-a);
+    background-image:
+        radial-gradient(62% 52% at 72% 10%, var(--auth-glow-warm) 0%, transparent 70%),
+        radial-gradient(58% 52% at 99% 74%, var(--auth-glow-cool) 0%, transparent 72%),
+        linear-gradient(107deg,
+            var(--auth-field-a) 0%,
+            var(--auth-field-b) 46%,
+            var(--auth-field-c) 100%);
+    background-repeat: no-repeat;
+}
+
+/* Full-width bottom vignette: above the art, below the form. */
+.login-page::after {
+    content: '';
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 58%;
+    z-index: 0;
+    pointer-events: none;
+    background: linear-gradient(to top, var(--auth-vignette) 2%, transparent 100%);
+    opacity: 0.88;
+}
+
+/* Dissolve the wrapper so both halves are direct grid items. */
+.login-wrapper {
+    display: contents;
+}
+
+/* Form column (left) */
+
+.form-side {
+    order: -1;                 /* DOM keeps .visual-side first; show it second */
+    position: relative;
+    z-index: 1;                /* over the page vignette; the art stays under it */
+    background: none;          /* the page owns the background */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 56px 24px;
+}
+
+.form-side > * {
+    width: 100%;
+    max-width: 380px;
+    margin-inline: auto;
+}
+
+.form-header {
+    margin-bottom: 28px;
+}
+
+.form-header h2 {
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    margin: 0 0 6px;
+}
+
+.form-header p {
+    color: var(--auth-muted);
+    font-size: 13.5px;
+    margin: 0;
+    min-height: 1.2em;         /* reserve the status line so nothing jumps */
+}
+
+.input-group {
+    margin-bottom: 16px;
+}
+
+.input-group label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 600;
+    margin-bottom: 7px;
+    color: var(--auth-text);
+}
+
+.login-page .input-field {
+    width: 100%;
+    background-color: var(--auth-input-bg);
+    border: 1px solid var(--auth-input-border);
+    border-radius: var(--auth-radius);
+    padding: 13px 14px;
+    color: var(--auth-text);
+    font-size: 14px;
+    font-family: 'Montserrat', sans-serif;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.login-page .input-field::placeholder {
+    color: var(--auth-muted);
+    opacity: 0.65;
+}
+
+.login-page .input-field:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--auth-accent) 62%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--auth-accent) 13%, transparent);
+}
+
+.options-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin: -4px 0 22px;
+}
+
+.login-button {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: var(--auth-radius);
+    background-color: var(--auth-accent);
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.18s ease;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 48px;
+    font-family: 'Montserrat', sans-serif;
+}
+
+.login-button:hover:not(:disabled) {
+    background-color: var(--auth-accent-hover);
+}
+
+.login-button:focus-visible {
+    outline: 2px solid var(--auth-accent);
+    outline-offset: 2px;
+}
+
+.login-button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+/* Text buttons: "Forgot password?", "Create an account", "← Back to login". */
+.login-page .link-button {
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--auth-link);
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.login-page .link-button:hover {
+    color: var(--auth-link-hover);
+}
+
+.login-page .link-button:focus-visible {
+    outline: 2px solid var(--auth-link);
+    outline-offset: 3px;
+    border-radius: 3px;
+}
+
+/* Explanatory paragraphs above a form (setup / recovery / forgot modes). */
+.form-note {
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--auth-muted);
+    margin: 0 0 16px;
+}
+
+.form-alt {
+    margin-top: 16px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--auth-muted);
+}
+
+.login-loader {
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    width: 18px;
+    height: 18px;
+    display: none;
+    animation: authSpin 0.9s linear infinite;
+}
+
+@keyframes authSpin {
+    to { transform: rotate(360deg); }
+}
+
+.error-message {
+    display: none;
+    background-color: rgba(255, 55, 66, 0.1);
+    color: #ff5f68;
+    border: 1px solid rgba(255, 55, 66, 0.3);
+    padding: 11px 13px;
+    border-radius: var(--auth-radius);
+    margin-bottom: 18px;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.error-message.show {
+    display: block;
+}
+
+.form-footer {
+    margin-top: 26px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--auth-muted);
+}
+
+/* Art panel (right): cards and headline only; the background is .login-page's. */
+
+.visual-side {
+    position: relative;
+    overflow: hidden;          /* clips the tilted card stack, nothing else */
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 44px;
+    color: var(--auth-art-ink);
+    background: none;
+}
+
+/* Unused: the light sources are on .login-page. */
+.visual-wash {
+    display: none;
+}
+
+.visual-stack {
+    position: absolute;
+    z-index: 0;                /* under .login-page::after, so the stack fades into the floor */
+    top: 50%;
+    left: 30%;
+    width: 340px;
+    height: 0;
+    transform: rotate(-15deg);
+    pointer-events: none;
+}
+
+.mock-panel {
+    position: absolute;
+    width: 340px;
+    border-radius: 14px;
+    background: var(--auth-card-bg);
+    border: 1px solid var(--auth-card-line);
+    backdrop-filter: blur(2px);
+    box-shadow: 0 24px 60px var(--auth-card-shadow);
+    overflow: hidden;
+}
+
+.mock-panel-1 { top: -290px; left: 78px;  opacity: 0.5; }
+.mock-panel-2 { top: -78px;  left: 0;     opacity: 0.92; }
+.mock-panel-3 { top: 132px;  left: 104px; opacity: 0.68; }
+
+.mock-chrome {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--auth-card-line);
+    background: var(--auth-card-chrome);
+}
+
+.mock-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--auth-accent);
+    flex: none;
+}
+
+.mock-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--auth-art-ink-dim);
+}
+
+.mock-lock {
+    margin-left: auto;
+    width: 22px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--auth-card-fill);
+}
+
+.mock-rows {
+    padding: 10px 14px 14px;
+}
+
+.mock-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 0;
+}
+
+.mock-icon {
+    width: 15px;
+    height: 15px;
+    border-radius: 4px;
+    flex: none;
+    background: var(--auth-card-fill);
+}
+
+.mock-icon-folder {
+    background: color-mix(in srgb, var(--auth-accent) 72%, transparent);
+}
+
+.mock-line {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--auth-card-fill);
+}
+
+.mock-meta {
+    margin-left: auto;
+    width: 26px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--auth-card-line);
+}
+
+/* Masthead + headline sit above the cards and above the page vignette. */
+.visual-text {
+    position: relative;
+    z-index: 2;
+    margin-top: auto;
+}
+
+.brand-logo {
+    width: 36px;
+    height: 36px;
+    background-color: var(--auth-accent);
+    color: #ffffff;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 18px;
+    flex: none;
+}
+
+.brand-word {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+.visual-text h1 {
+    font-size: clamp(26px, 2.5vw, 36px);
+    font-weight: 400;
+    line-height: 1.22;
+    letter-spacing: -0.02em;
+    margin: 0;
+    max-width: 15ch;
+    text-wrap: balance;
+}
+
+.visual-text h1 span {
+    font-weight: 700;
+}
+
+.visual-sub {
+    margin: 14px 0 0;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--auth-art-ink-dim);
+    max-width: 40ch;
+}
+
+/* Light theme */
+
+body[data-theme="light"] .login-page {
+    /* Light --input-bg equals --bg-page, which would hide the fields. */
+    --auth-input-bg:  #ffffff;
+
+    /* Same field, pale instead of deep. */
+    --auth-field-a:   #F5F9FF;
+    --auth-field-b:   #E4EDFB;
+    --auth-field-c:   #C6D8F5;
+    --auth-glow-warm: rgba(118, 143, 245, 0.13);
+    --auth-glow-cool: rgba(160, 120, 255, 0.14);
+    --auth-vignette:  #b7cbec;
+
+    /* Art ink and cards flip to dark-on-light. */
+    --auth-art-ink:     var(--text-main, #2b3440);
+    --auth-art-ink-dim: rgba(43, 52, 64, 0.62);
+    --auth-card-bg:     rgba(255, 255, 255, 0.55);
+    --auth-card-line:   rgba(43, 52, 64, 0.12);
+    --auth-card-fill:   rgba(43, 52, 64, 0.16);
+    --auth-card-chrome: rgba(255, 255, 255, 0.55);
+    --auth-card-shadow: rgba(43, 52, 64, 0.16);
+
+    /* The light accent is near-grey, so links use brand indigo darkened to
+       clear 4.5:1 contrast across the whole light field. */
+    --auth-link:       #3a4bb5;
+    --auth-link-hover: #2f3f9e;
+}
+
+/* Mock folder icons keep the brand indigo; the light accent is near-grey. */
+body[data-theme="light"] .visual-side {
+    --auth-accent: #768ff5;
+}
+
+body[data-theme="light"] .error-message {
+    background-color: rgba(200, 30, 40, 0.07);
+    color: #c0212b;
+    border-color: rgba(200, 30, 40, 0.25);
+}
+
+/* Below 900px the art panel is dropped */
+
+@media (max-width: 900px) {
+    .login-page {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto 1fr;
+
+        /* Same field, turned upright for a tall viewport. */
+        background-image:
+            radial-gradient(90% 40% at 78% 0%, var(--auth-glow-warm) 0%, transparent 72%),
+            linear-gradient(168deg,
+                var(--auth-field-b) 0%,
+                var(--auth-field-a) 55%,
+                var(--auth-field-a) 100%);
+    }
+
+    .login-page::after {
+        height: 30%;
+        opacity: 0.6;
+    }
+
+    /* Keep the brand lockup, drop the artwork. .form-side resets its order
+       so the mast stays on top. */
+    .visual-side {
+        padding: 28px 20px 0;
+        background: none;
+        color: var(--auth-text);
+        display: block;
+    }
+
+    .visual-stack,
+    .visual-text {
+        display: none;
+    }
+
+    .form-side {
+        order: 0;
+        padding-block: 32px 48px;
+        padding-inline: 20px;
+        justify-content: flex-start;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .login-loader { animation-duration: 2s; }
+}

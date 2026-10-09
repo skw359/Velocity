@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Build output (create with: npm --prefix client run build)
+client/dist/
+
+# Secrets and environment
+.session-secret
+.env
+.env.*
+
+# Database and runtime state (created on first run)
+*.db
+*.db-shm
+*.db-wal
+shares.json
+locks.json
+bandwidth-stats.json
+network_stats.csv
+
+# User data and generated files
+content/
+converted/
+uploads/
+logs/
+*.log
+
+# Local backups and leftovers
+_comments-backup-*/
+_legacy-removed-*/
+
+# Editor, OS, and tool files
+.claude/settings.local.json
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
