@@ -38,6 +38,24 @@ Optional tools add extra previews. Velocity runs fine without them, and the star
 
 ## Install and run
 
+### Linux installer
+
+On a Linux system that uses systemd (Ubuntu, Debian, Fedora, Arch, openSUSE and their relatives), one command installs Velocity as a service that starts on boot:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/skw359/Velocity/main/install.sh | sudo bash
+```
+
+From a checkout, run `sudo bash install.sh` instead. The installer asks a few questions: the port, whether to add the optional preview tools, whether to open the port in the firewall, and the owner account. Then it does the rest. It installs the build tools and its own copy of Node.js, builds the web client, creates a `velocity` service account and the systemd service, and prints the address to open.
+
+- Run it again to update. Your settings, accounts and files are kept.
+- `--uninstall` removes the service. It asks before deleting any data.
+- `--yes` accepts every default, for unattended installs. `--help` lists the other options.
+
+For a step-by-step guide, including backups, settings and troubleshooting, see [INSTALL.md](INSTALL.md).
+
+### By hand
+
 1. Install the server dependencies:
 
    ```sh
@@ -83,7 +101,7 @@ All settings are optional environment variables.
 
 ## Where your data lives
 
-Everything is stored next to `server.js`.
+Everything is stored next to `server.js`. The Linux installer puts it in `/opt/velocity/app`.
 
 | Path | Contents |
 | --- | --- |
@@ -133,7 +151,7 @@ npm --prefix client run lint
 
 ## Deploying on Linux
 
-See [DEPLOY-UBUNTU.md](DEPLOY-UBUNTU.md) for Node setup, native build tools, external drives, and a systemd service.
+The [Linux installer](#linux-installer) sets everything up, and [INSTALL.md](INSTALL.md) walks through it step by step. To do it by hand instead, see [DEPLOY-UBUNTU.md](DEPLOY-UBUNTU.md) for Node setup, native build tools, external drives, and a systemd service.
 
 ## License
 

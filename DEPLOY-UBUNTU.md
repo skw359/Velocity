@@ -1,5 +1,8 @@
 # Running velocity on Ubuntu
 
+> The quickest route is [`install.sh`](install.sh) (see the README), which does
+> everything on this page for you. Read on to set it up by hand.
+
 The server is portable Node and runs on Ubuntu. Two things need attention before
 it will start, and a third before external drives appear.
 
