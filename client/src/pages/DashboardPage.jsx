@@ -6,8 +6,9 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { usePolling, useLoadStorage } from '../hooks/usePolling';
 import { useOperations } from '../hooks/useOperations';
 import { useUpload, traverseFileTree } from '../hooks/useUpload';
-import { apiListFiles, apiGetDrives, apiCheckConflicts } from '../api/fetch';
+import { apiListFiles, apiGetDrives, apiCheckConflicts, apiDownloadMultiple } from '../api/fetch';
 import { cancelBackgroundTasks } from '../utils/requestQueue';
+import { saveBlob } from '../utils/download';
 import { applyConflictResolutions, samePath } from '../utils/conflicts';
 import Header from '../components/Header';
 import NavBar from '../components/NavBar';
@@ -32,7 +33,7 @@ import '../styles/global.css';
 
 function DashboardContent({ account }) {
   const isSettingsPage = !!useMatch('/app/settings');
-  const { state, dispatch, longOpStop } = useAppContext();
+  const { state, dispatch, longOpStart, longOpStop } = useAppContext();
   const { loadStorageInfo } = useLoadStorage();
   usePolling();
 
@@ -408,6 +409,24 @@ function DashboardContent({ account }) {
     dispatch({ type: 'START_TRANSFER', payload: { mode, items } });
   }, [state.selectedItems, dispatch]);
 
+  const handleMassDownload = useCallback(async () => {
+    if (state.selectedItems.size === 0) return;
+    const items = Array.from(state.selectedItems, ([name, obj]) => ({ name, path: obj.path, drive: obj.drive }));
+    // Named after the folder the items share; search results can span folders.
+    const sharedPath = items.every(it => it.path === items[0].path) ? items[0].path : null;
+    const zipName = (sharedPath && sharedPath.split('/').filter(p => p).pop()) || 'download';
+    const opKey = `download-multiple:${Date.now()}`;
+    longOpStart(opKey, `Zipping ${items.length} items...`);
+    try {
+      saveBlob(await apiDownloadMultiple(items), `${zipName}.zip`);
+    } catch (error) {
+      console.error('Download error:', error);
+      alert(error.detail || error.message);
+    } finally {
+      longOpStop(opKey);
+    }
+  }, [state.selectedItems, longOpStart, longOpStop]);
+
   return (
     <>
       <Header onRefresh={handleRefresh} />
@@ -436,6 +455,7 @@ function DashboardContent({ account }) {
           <TransferBar onConfirm={handleTransferConfirm} onCancel={handleTransferCancel} />
           <UtilityBar
             onMassDelete={() => setDeleteModal({ show: true, name: '', path: '', drive: '', isMass: true })}
+            onMassDownload={handleMassDownload}
             onMassCopyTo={() => beginMassTransfer('copy')}
             onMassMoveTo={() => beginMassTransfer('move')}
           />

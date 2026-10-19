@@ -206,6 +206,18 @@ export async function apiCheckSpace(payload) {
   if (isRefusalResponse(res)) throw await refusalError(res);
 }
 
+// items: [{ name, path, drive }], zipped together by the server. Resolves to the zip's Blob.
+export async function apiDownloadMultiple(items) {
+  const res = await fetchWithAuthCheck('/api/download-multiple', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items }),
+  });
+  if (isRefusalResponse(res)) throw await refusalError(res);
+  if (!res.ok) throw new Error((await res.text()) || 'Download failed');
+  return res.blob();
+}
+
 // Active (pending|running) operations for the current user.
 export async function apiListOperations() {
   const res = await fetchWithAuthCheck('/api/operations');

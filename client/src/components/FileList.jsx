@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { fetchWithAuthCheck } from '../api/fetch';
+import { saveBlob } from '../utils/download';
 import { formatBytes, formatDate, getFileExtension, getContentBaseUrl, getFileCategory, imageExtensions, audioExtensions, videoExtensions, movExtensions, pdfExtensions, archiveExtensions, rawImageExtensions } from '../utils/format';
 import FileItem from './FileItem';
 import FileListHeader from './FileListHeader';
@@ -184,16 +185,7 @@ async function downloadItem(name, type, path, drive, longOpStart, longOpStop) {
     try {
       const response = await fetchWithAuthCheck(downloadUrl);
       if (!response.ok) throw new Error(`Download failed: ${await response.text()}`);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = `${name}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      saveBlob(await response.blob(), `${name}.zip`);
     } catch (error) {
       console.error('Download error:', error);
       alert(error.message);

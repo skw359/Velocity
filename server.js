@@ -1515,6 +1515,60 @@ apiRouter.get('/download', async (req, res) => {
     }
 });
 
+// A multi-selection as one zip: each item at the archive root, folders with their contents.
+apiRouter.post('/download-multiple', async (req, res) => {
+    const items = req.body && req.body.items;
+    if (!Array.isArray(items) || items.length === 0) return res.status(400).send('No items provided.');
+
+    const entries = [];
+    const usedNames = new Set();
+    for (const it of items) {
+        const name = it && it.name;
+        const driveId = (it && it.drive) || 'internal';
+        if (typeof name !== 'string' || !name) return res.status(400).send('Invalid item name.');
+        if (!assertReadable(driveId, req, res)) return;
+        const itemPath = getSafePath(path.join(it.path || '/', name), driveId, req.user);
+        if (!itemPath) return res.status(400).send('Invalid path.');
+        let stats;
+        try { stats = await fs.promises.stat(itemPath); }
+        catch { return res.status(404).send(`'${name}' no longer exists.`); }
+        // Same-named items from different folders (search results) would overwrite each other on extract.
+        let entryName = name;
+        for (let n = 1; usedNames.has(entryName.toLowerCase()); n++) {
+            entryName = suffixedTransferName(name, stats.isDirectory(), n);
+        }
+        usedNames.add(entryName.toLowerCase());
+        entries.push({ itemPath, entryName, isDirectory: stats.isDirectory() });
+    }
+
+    logger.info(`[Download] Started: ${entries.length} items (zip) [IP: ${req.ip}]`);
+    const archive = archiver('zip', { zlib: { level: 6 } });
+
+    archive.on('error', (err) => {
+        logger.error(`[Download] Archive error for ${entries.length} items: ${err.code || err.message}`);
+        if (!res.headersSent) res.status(500).send('Error creating archive.');
+        else res.destroy(err);
+    });
+    archive.on('warning', (err) => {
+        logger.warn(`[Download] Archive warning for ${entries.length} items: ${err.code || err.message}`);
+    });
+    archive.on('end', () => {
+        bandwidth.addDownloaded(archive.pointer());
+        logger.info(`[Download] Completed: ${entries.length} items (${formatBytes(archive.pointer())} zipped)`);
+    });
+    res.on('close', () => {
+        if (!res.writableFinished) archive.abort();
+    });
+
+    res.attachment('download.zip');
+    archive.pipe(res);
+    for (const { itemPath, entryName, isDirectory } of entries) {
+        if (isDirectory) archive.directory(itemPath, entryName);
+        else archive.file(itemPath, { name: entryName });
+    }
+    archive.finalize().catch(() => { /* surfaced via the 'error' handler above */ });
+});
+
 // Never exposes the share's on-disk path or drive.
 function publicShare(rec) {
     return {
