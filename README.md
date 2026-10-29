@@ -1,5 +1,7 @@
 # Velocity
 
+[![CI](https://github.com/skw359/Velocity/actions/workflows/ci.yml/badge.svg)](https://github.com/skw359/Velocity/actions/workflows/ci.yml)
+
 **The first-class storage solution.**
 
 Velocity is a self-hosted file manager. You run it on your own computer or server, and use it from a web browser to browse, upload, download, preview, and share your files.
