@@ -416,7 +416,19 @@ export async function apiChangePassword(currentPassword, newPassword) {
 export async function apiListAccounts() {
   const res = await fetchWithAuthCheck('/api/admin/users');
   if (!res.ok) throw new Error('Could not load accounts.');
-  return res.json(); // { accounts: [...] }
+  return res.json(); // { accounts: [...], signupOpen }
+}
+
+// Owner only. externalDrives: 'none' | 'ro' | 'rw'.
+export async function apiCreateAccount(username, password, externalDrives) {
+  const res = await fetchWithAuthCheck('/api/admin/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, externalDrives }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || 'Could not create the account.');
+  return data; // { account }
 }
 
 export async function apiResetAccountPassword(id, newPassword) {

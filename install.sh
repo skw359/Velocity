@@ -55,7 +55,7 @@ SOURCE_EXCLUDES=(
   --exclude=./network_stats.csv --exclude=./.session-secret
   --exclude=./.env --exclude='./.env.*'
   --exclude='./_comments-backup-*' --exclude='./_legacy-removed-*'
-  --exclude=./.claude --exclude=./.vscode --exclude=./.idea
+  --exclude=./.claude --exclude=./.vscode --exclude=./.idea --exclude=./tests
 )
 
 # Options
@@ -1045,6 +1045,14 @@ PORT=$PORT
 # uid/gid; see DEPLOY-UBUNTU.md in the Velocity repository). To scan other mount
 # points too, list them here, separated by commas:
 #VELOCITY_EXTERNAL_DRIVES=/srv/disk1,/data
+
+# Only the owner can add accounts (in Settings). To let anyone who can reach
+# the server create their own account, uncomment this:
+#VELOCITY_SIGNUP=open
+
+# Behind a reverse proxy on this machine (Caddy, nginx) that provides HTTPS,
+# uncomment this so the plain-HTTP port isn't reachable from the network:
+#VELOCITY_HOST=127.0.0.1
 
 NODE_ENV=production
 VELOCITY_NO_COLOR=1

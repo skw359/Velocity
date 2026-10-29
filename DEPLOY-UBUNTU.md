@@ -22,8 +22,8 @@ rather than leave you to decode a build error.
 
 ## 2. Build tools for the native modules
 
-`diskusage` (and `drivelist`) compile from source — there are no prebuilt Linux
-binaries — so the toolchain has to be present:
+`diskusage` compiles from source — there are no prebuilt Linux binaries — so the
+toolchain has to be present:
 
 ```sh
 sudo apt install -y build-essential python3
@@ -42,10 +42,6 @@ npm --prefix client install && npm --prefix client run build
 
 The second line matters: the server serves the built SPA from `client/dist`, and
 that directory is not produced by the root install.
-
-> `drivelist` is listed as a dependency but nothing imports it. Dropping it
-> (`npm uninstall drivelist`) removes one native build from the install and
-> changes no behaviour.
 
 ## 3. Optional conversion tools
 
@@ -101,10 +97,20 @@ service account will not automatically be able to read it — mount with suitabl
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PORT` | `3000` | Listen port. |
-| `VELOCITY_SESSION_SECRET` | generated | Session signing key. Set this if the app runs on more than one host, or set nothing and let it persist `.session-secret` next to `server.js`. |
+| `VELOCITY_HOST` | all interfaces | Listen address; `127.0.0.1` behind a same-host reverse proxy. |
+| `VELOCITY_DATA_DIR` | next to `server.js` | Where files, the database, share links and logs live. |
+| `VELOCITY_SIGNUP` | `closed` | `open` lets anyone who can reach the server create an account. |
+| `VELOCITY_TRUST_PROXY` | `loopback` | Proxies allowed to set `X-Forwarded-*` (Express `trust proxy` syntax). Set it when the proxy is on another machine. |
+| `VELOCITY_SECURE_COOKIES` | `auto` | Secure login cookie: `auto` (when the request was HTTPS), `true` or `false`. |
+| `VELOCITY_SESSION_SECRET` | generated | Session signing key. Set this if the app runs on more than one host, or set nothing and let it persist `.session-secret` in the data folder. |
 | `VELOCITY_EXTERNAL_DRIVES` | — | Extra mount roots to scan, comma-separated. |
-| `OPERATIONS_DB` | `./operations.db` | Path to the SQLite database. |
+| `OPERATIONS_DB` | `<data dir>/operations.db` | Path to the SQLite database (accounts, sessions, operations). |
+| `VELOCITY_LOG_MAX_SIZE_MB` / `VELOCITY_LOG_MAX_FILES` | `20` / `5` | Log rotation: size per file, and rolled-over files kept. |
 | `NO_COLOR` / `VELOCITY_NO_COLOR` | — | Disable ANSI colour in the log (useful under `journalctl`). |
+
+An unexpected error (a bug, not a failed file operation) makes the server shut
+down cleanly and exit with a failure code; `Restart=on-failure` below brings it
+straight back.
 
 ## Running under systemd
 

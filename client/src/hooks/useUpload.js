@@ -7,8 +7,10 @@ import {
 } from '../api/fetch';
 import { clientId, STORAGE_TITLE } from './useOperations';
 
-const CHUNK_SIZE = 10 * 1024 * 1024;
+const CHUNK_SIZE = 10 * 1024 * 1024; // MUST match CHUNK_SIZE in routes/uploads.js
 const MAX_CONCURRENT_UPLOADS = 3;
+// How often one file may be sent back to an earlier chunk before it is given up on.
+const MAX_REWINDS = 5;
 const MAX_TOOLTIP_FILES = 10;
 // Progress events fire per socket write; coalesce them so re-renders stay at ~10fps.
 const PROGRESS_EMIT_MS = 100;
@@ -135,12 +137,14 @@ class UploadManager {
       } catch { /* offset unknown, upload the whole file */ }
     }
 
+    let rewinds = 0;
     for (let chunkIndex = startChunk; chunkIndex < totalChunks; chunkIndex++) {
       if (!this.isUploading || generation !== this.generation) return;
       const start = chunkIndex * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, file.size);
       const chunk = file.slice(start, end);
       let retries = 3;
+      let rewindTo = null;
       while (retries > 0) {
         // Each attempt re-sends the whole chunk, so rewind to the boundary to avoid double-counting.
         this.setFileUploaded(uniqueId, start);
@@ -154,6 +158,13 @@ class UploadManager {
           break;
         } catch (e) {
           if (isStorageError(e)) throw e; // retrying can't make room
+          // The server is missing earlier bytes of this file (lost across a restart, say)
+          // and says where its copy ends: continue from that chunk.
+          if (typeof e.offset === 'number' && rewinds < MAX_REWINDS) {
+            rewinds++;
+            rewindTo = Math.min(chunkIndex, Math.floor(e.offset / CHUNK_SIZE));
+            break;
+          }
           console.error(`Chunk ${chunkIndex} failed for ${file.name}. Retries left: ${retries}`);
           retries--;
           if (retries === 0) throw e;
@@ -169,6 +180,10 @@ class UploadManager {
             } catch { /* keep retrying */ }
           }
         }
+      }
+      if (rewindTo !== null) {
+        this.setFileUploaded(uniqueId, rewindTo * CHUNK_SIZE);
+        chunkIndex = rewindTo - 1; // the loop's increment lands on rewindTo
       }
     }
   }
@@ -192,16 +207,19 @@ class UploadManager {
       xhr.setRequestHeader('Content-Type', 'application/octet-stream');
       xhr.onload = () => {
         if (xhr.status === 200) { resolve(); return; }
+        let body = {};
+        try { body = JSON.parse(xhr.responseText); } catch { /* plain-text error */ }
         if (xhr.status === 507) {
-          let body = {};
-          try { body = JSON.parse(xhr.responseText); } catch { /* keep the defaults */ }
           const err = new Error(body.message || STORAGE_TITLE);
           err.code = 'insufficient_storage';
           err.detail = body.detail || '';
           reject(err);
           return;
         }
-        reject(new Error(xhr.responseText));
+        const err = new Error(body.message || xhr.responseText || `Upload failed (${xhr.status})`);
+        // 409: the server's copy of this file ends at `offset`, short of this chunk's start.
+        if (xhr.status === 409 && typeof body.offset === 'number') err.offset = body.offset;
+        reject(err);
       };
       xhr.onerror = () => reject(new Error('Network Error'));
       xhr.send(chunk);

@@ -78,6 +78,8 @@ Open the address in a web browser and sign in with your owner account.
 
 If you skipped the owner account, you will see a sign up page instead. The first account created there becomes the owner. Do this right away, because until the owner exists, anyone who can reach the address could create it.
 
+To give other people accounts, open **Settings → People → Manage** and add them there. Sign-up is closed once the owner exists. If you want people to create their own accounts instead, see [Change settings](#change-settings).
+
 ## Everyday use
 
 Velocity runs in the background and starts by itself when the computer turns on. These commands help you look after it:
@@ -118,7 +120,7 @@ Run the installer again:
 sudo bash /opt/velocity/install.sh
 ```
 
-It downloads the newest version and keeps your accounts, files and settings. It takes a minute or two, and Velocity is offline for only a few seconds. Everyone has to sign in again afterwards.
+It downloads the newest version and keeps your accounts, files and settings. It takes a minute or two, and Velocity is offline for only a few seconds. People who were signed in stay signed in.
 
 ## Change settings
 
@@ -140,6 +142,16 @@ Disks mounted under `/media`, `/run/media` or `/mnt` show up in Velocity as exte
 
 If a drive does not show up, Velocity may not be allowed to read it. [DEPLOY-UBUNTU.md](DEPLOY-UBUNTU.md) explains how to mount a disk so Velocity can use it.
 
+### Let people sign themselves up
+
+By default only the owner can add accounts. To let anyone who can reach Velocity create an account:
+
+1. Open the settings file: `sudo nano /etc/velocity/velocity.env`
+2. Add the line `VELOCITY_SIGNUP=open` (or remove the `#` in front of it, if it is there).
+3. Save the file, then run `sudo systemctl restart velocity`
+
+Only do this if you trust everyone who can reach the address.
+
 ## Use Velocity away from home
 
 Velocity uses plain HTTP, which is not encrypted. Do not open it to the whole internet as it is. Two simple options:
@@ -154,6 +166,8 @@ Velocity uses plain HTTP, which is not encrypted. Do not open it to the whole in
   ```
 
   Restart Caddy with `sudo systemctl restart caddy`. Caddy gets an HTTPS certificate for you.
+
+  Then keep the plain-HTTP port private: add `VELOCITY_HOST=127.0.0.1` to `/etc/velocity/velocity.env` and run `sudo systemctl restart velocity`. Only Caddy can reach Velocity after that, and Velocity marks its login cookie Secure because Caddy tells it the visit used HTTPS.
 
 ## Install without questions
 

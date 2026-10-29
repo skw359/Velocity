@@ -4,11 +4,11 @@
 // the same relative path can't collapse onto one token and manage each other's link.
 
 const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
+const config = require('./config');
 const logger = require('./logger');
 
-const STORE_FILE = path.join(__dirname, 'shares.json');
+const STORE_FILE = config.SHARES_FILE;
 
 // token -> share record
 const shares = new Map();

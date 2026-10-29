@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { bandwidthWidgetEnabled, setBandwidthWidgetEnabled } from '../utils/uiPrefs';
 import {
-  apiChangePassword, apiListAccounts, apiResetAccountPassword,
+  apiChangePassword, apiListAccounts, apiCreateAccount, apiResetAccountPassword,
   apiSetAccountStatus, apiSetAccountDrives, apiDeleteAccount,
 } from '../api/fetch';
 
@@ -29,6 +29,11 @@ export default function SettingsPage({ active, account }) {
   const [resetFor, setResetFor] = useState(null); // account id
   const [resetPw, setResetPw] = useState('');
   const [resetBusy, setResetBusy] = useState(false);
+  const [signupOpen, setSignupOpen] = useState(null); // unknown until the accounts load
+  const [newName, setNewName] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [newDrives, setNewDrives] = useState('ro');
+  const [createBusy, setCreateBusy] = useState(false);
 
   useEffect(() => {
     if (active) {
@@ -48,9 +53,28 @@ export default function SettingsPage({ active, account }) {
   }, [lightMode]);
 
   const refreshAccounts = useCallback(async () => {
-    try { setAccounts((await apiListAccounts()).accounts || []); }
-    catch (e) { setAccMsg({ ok: false, text: e.message || 'Could not load accounts.' }); }
+    try {
+      const data = await apiListAccounts();
+      setAccounts(data.accounts || []);
+      setSignupOpen(!!data.signupOpen);
+    } catch (e) { setAccMsg({ ok: false, text: e.message || 'Could not load accounts.' }); }
   }, []);
+
+  const handleCreateAccount = async () => {
+    if (newPw.length < 8) { setAccMsg({ ok: false, text: 'Password must be at least 8 characters.' }); return; }
+    setCreateBusy(true);
+    setAccMsg(null);
+    try {
+      const { account: created } = await apiCreateAccount(newName.trim(), newPw, newDrives);
+      setAccMsg({ ok: true, text: `Created '${created.username}'. Pass the password on however you normally would.` });
+      setNewName(''); setNewPw(''); setNewDrives('ro');
+      await refreshAccounts();
+    } catch (e) {
+      setAccMsg({ ok: false, text: e.message || 'Could not create the account.' });
+    } finally {
+      setCreateBusy(false);
+    }
+  };
 
   const handleChangePassword = async () => {
     setPwMsg(null);
@@ -197,7 +221,7 @@ export default function SettingsPage({ active, account }) {
 
         {settingsRow(
           'Change password',
-          'You need your current password. Other sessions stay signed in.',
+          'You need your current password. Your other sessions are signed out.',
           <button className="modal-button modal-button-cancel" aria-expanded={pwOpen} aria-controls="settings-password-form" onClick={() => { setPwOpen(!pwOpen); setPwMsg(null); }}>
             {pwOpen ? 'Close' : 'Change'}
           </button>,
@@ -224,7 +248,7 @@ export default function SettingsPage({ active, account }) {
 
           {settingsRow(
             'Accounts on this server',
-            'Anyone who can reach this server can create an account, and each one gets storage of its own. Suspend or delete the ones that should not be here.',
+            'Add people, reset passwords, and choose who can use external drives. Each account gets storage of its own.',
             <button className="modal-button modal-button-cancel" aria-expanded={accOpen} aria-controls="settings-accounts" onClick={() => { const n = !accOpen; setAccOpen(n); setAccMsg(null); if (n) refreshAccounts(); }}>
               {accOpen ? 'Close' : 'Manage'}
             </button>,
@@ -232,6 +256,35 @@ export default function SettingsPage({ active, account }) {
 
           {accOpen && (
             <div className="settings-form" id="settings-accounts">
+              {signupOpen !== null && (
+                <p className="settings-note">
+                  {signupOpen
+                    ? 'Sign-up is open: anyone who can reach this server can create an account. Suspend or delete the ones that should not be here.'
+                    : 'Sign-up is closed, so accounts are added here. (Setting VELOCITY_SIGNUP=open on the server lets people sign themselves up.)'}
+                </p>
+              )}
+
+              <div className="settings-panel">
+                <p>Add an account. Share the password with its owner, who can change it in Settings.</p>
+                <input
+                  type="text" className="file-input-field" aria-label="New account username" placeholder="Username"
+                  value={newName} onChange={(e) => setNewName(e.target.value)} autoComplete="off" spellCheck="false"
+                />
+                <input
+                  type="password" className="file-input-field" aria-label="New account password"
+                  placeholder="Password (at least 8 characters)"
+                  value={newPw} onChange={(e) => setNewPw(e.target.value)} autoComplete="new-password"
+                />
+                <select className="file-input-field" aria-label="External drive access" value={newDrives} onChange={(e) => setNewDrives(e.target.value)}>
+                  <option value="none">External drives: {DRIVE_LABEL.none}</option>
+                  <option value="ro">External drives: {DRIVE_LABEL.ro}</option>
+                  <option value="rw">External drives: {DRIVE_LABEL.rw}</option>
+                </select>
+                <button className="modal-button modal-button-delete" disabled={createBusy || !newName.trim() || newPw.length < 8} onClick={handleCreateAccount}>
+                  {createBusy ? 'Creating…' : 'Add account'}
+                </button>
+              </div>
+
               {accounts.length === 0 && <p className="settings-note">No accounts loaded.</p>}
 
               {accounts.map((acc) => (

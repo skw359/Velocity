@@ -1,11 +1,14 @@
 // One connection shared by every store on purpose: a second handle on the same WAL database
 // just trades SQLITE_BUSY retries for no benefit. The node:sqlite fallback takes the same `?`/`@x` params.
 
+const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const config = require('./config');
 const logger = require('./logger');
 
-const DB_FILE = process.env.OPERATIONS_DB || path.join(__dirname, 'operations.db');
+const DB_FILE = config.DB_FILE;
+fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
 
 let db;
 let driver;

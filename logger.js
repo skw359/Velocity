@@ -2,6 +2,7 @@ const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const config = require('./config');
 
 const COLOR =
   process.env.NO_COLOR || process.env.VELOCITY_NO_COLOR
@@ -138,12 +139,19 @@ const consoleFormat = winston.format.printf((info) => {
   return line;
 });
 
-// Anchored to the app directory, not the cwd, so logs land in one place however the process is launched.
-const logDir = path.join(__dirname, 'logs');
+// Anchored to the data directory, not the cwd, so logs land in one place however the process is launched.
+const logDir = config.LOG_DIR;
 if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
 
+// Each file rolls over at LOG_MAX_BYTES and only LOG_MAX_FILES of them are kept, so a
+// long-lived server can't fill its disk with logs. tailable keeps the newest lines in the
+// unnumbered file (combined.log); the oldest numbered file is the one dropped.
+const rotation = { maxsize: config.LOG_MAX_BYTES, maxFiles: config.LOG_MAX_FILES, tailable: true };
+const silent = config.LOG_LEVEL === 'silent';
+
 const logger = winston.createLogger({
-  level: 'info',
+  level: silent ? 'error' : config.LOG_LEVEL,
+  silent,
   format: winston.format.combine(
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.errors({ stack: true }),
@@ -151,13 +159,14 @@ const logger = winston.createLogger({
     winston.format.json()
   ),
   transports: [
-    new winston.transports.File({ filename: path.join(logDir, 'error.log'), level: 'error' }),
-    new winston.transports.File({ filename: path.join(logDir, 'combined.log') }),
+    new winston.transports.File({ filename: path.join(logDir, 'error.log'), level: 'error', ...rotation }),
+    new winston.transports.File({ filename: path.join(logDir, 'combined.log'), ...rotation }),
   ],
 });
 
 logger.add(
   new winston.transports.Console({
+    silent,
     format: winston.format.combine(
       winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
       consoleFormat
@@ -273,7 +282,7 @@ logger.boot = function boot({ port, drives, workers, extra }) {
     ['Local', `http://localhost:${port}`],
     ['Network', `http://${firstLanAddress()}:${port}`],
     ['Drives', drives && drives.length ? drives.join(', ') : 'internal'],
-    ['Workers', `${workers} size worker${workers === 1 ? '' : 's'}`],
+    ['Workers', `up to ${workers} size worker${workers === 1 ? '' : 's'}, started on demand`],
     ['Runtime', `node ${process.version} · pid ${process.pid}`],
     ['Platform', `${os.type()} ${os.release()} · ${os.cpus().length} cpu`],
   ];
