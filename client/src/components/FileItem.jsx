@@ -152,7 +152,7 @@ export default function FileItem({ item, itemPath, drive, isSearch, index, visib
         if (rangeItem) {
           const rangePath = isSearch ? rangeItem.path : itemPath;
           if (isChecking) {
-            newSelected.set(rangeItem.name, { path: rangePath, drive });
+            newSelected.set(rangeItem.name, { path: rangePath, drive, type: rangeItem.type });
           } else {
             newSelected.delete(rangeItem.name);
           }
@@ -160,7 +160,7 @@ export default function FileItem({ item, itemPath, drive, isSearch, index, visib
       }
     } else {
       if (isChecking) {
-        newSelected.set(item.name, { path: itemPath, drive });
+        newSelected.set(item.name, { path: itemPath, drive, type: item.type });
       } else {
         newSelected.delete(item.name);
       }
@@ -168,7 +168,7 @@ export default function FileItem({ item, itemPath, drive, isSearch, index, visib
 
     dispatch({ type: 'SET_SELECTED_ITEMS', payload: newSelected });
     if (index !== undefined) dispatch({ type: 'SET_LAST_CLICKED_INDEX', payload: index });
-  }, [state.selectedItems, state.lastClickedIndex, isSelected, item.name, itemPath, drive, index, visibleItems, isSearch, dispatch]);
+  }, [state.selectedItems, state.lastClickedIndex, isSelected, item.name, item.type, itemPath, drive, index, visibleItems, isSearch, dispatch]);
 
   const isGrid = state.viewMode === 'grid';
 

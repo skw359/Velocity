@@ -9,6 +9,7 @@ import { useUpload, traverseFileTree } from '../hooks/useUpload';
 import { apiListFiles, apiGetDrives, apiCheckConflicts, apiDownloadMultiple } from '../api/fetch';
 import { cancelBackgroundTasks } from '../utils/requestQueue';
 import { saveBlob } from '../utils/download';
+import { isArchiveItem } from '../utils/format';
 import { applyConflictResolutions, samePath } from '../utils/conflicts';
 import Header from '../components/Header';
 import NavBar from '../components/NavBar';
@@ -30,6 +31,14 @@ import ShareModal from '../components/modals/ShareModal';
 import ConflictModal from '../components/modals/ConflictModal';
 import SettingsPage from './SettingsPage';
 import '../styles/global.css';
+
+// Deepest folder holding every path, e.g. /A/B and /A/C -> /A.
+function commonFolder(paths) {
+  const split = paths.map(p => p.split('/').filter(s => s));
+  const common = [];
+  for (let i = 0; split.every(s => i < s.length && s[i] === split[0][i]); i++) common.push(split[0][i]);
+  return `/${common.join('/')}`;
+}
 
 function DashboardContent({ account }) {
   const isSettingsPage = !!useMatch('/app/settings');
@@ -427,6 +436,40 @@ function DashboardContent({ account }) {
     }
   }, [state.selectedItems, longOpStart, longOpStop]);
 
+  const handleMassInfo = useCallback(() => {
+    const items = Array.from(state.selectedItems, ([name, obj]) => ({ name, path: obj.path, drive: obj.drive }));
+    if (items.length > 0) setInfoModal({ show: true, items });
+  }, [state.selectedItems]);
+
+  const handleMassShare = useCallback(() => {
+    const entries = Array.from(state.selectedItems);
+    if (entries.length === 1) {
+      const [name, obj] = entries[0];
+      setShareModal({ show: true, name, type: obj.type, path: obj.path, drive: obj.drive });
+    } else if (entries.length > 1) {
+      setShareModal({ show: true, items: entries.map(([name, obj]) => ({ name, path: obj.path, drive: obj.drive })) });
+    }
+  }, [state.selectedItems]);
+
+  // One operation over the selected items `applies` keeps. Most types process each item in its
+  // own folder; a multi-item compress writes its one archive to destPath, the folder they share.
+  const runSelectionOp = useCallback(async (type, applies = () => true) => {
+    const items = Array.from(state.selectedItems, ([name, obj]) => ({
+      name,
+      sourcePath: obj.path,
+      sourceDrive: obj.drive,
+      itemType: obj.type,
+    })).filter(applies);
+    if (items.length === 0) return;
+    const destPath = commonFolder(items.map(it => it.sourcePath));
+    try {
+      await startOperation({ type, destDrive: items[0].sourceDrive, destPath, items });
+      dispatch({ type: 'SET_SELECTED_ITEMS', payload: new Map() });
+    } catch (e) {
+      if (!e.handled) alert(e.message); // handled: shown in the long-op bar's spot
+    }
+  }, [state.selectedItems, startOperation, dispatch]);
+
   return (
     <>
       <Header onRefresh={handleRefresh} />
@@ -455,7 +498,12 @@ function DashboardContent({ account }) {
           <TransferBar onConfirm={handleTransferConfirm} onCancel={handleTransferCancel} />
           <UtilityBar
             onMassDelete={() => setDeleteModal({ show: true, name: '', path: '', drive: '', isMass: true })}
+            onMassShare={handleMassShare}
             onMassDownload={handleMassDownload}
+            onMassInfo={handleMassInfo}
+            onMassExtract={() => runSelectionOp('extract', it => isArchiveItem(it.name, it.itemType))}
+            onMassCompress={() => runSelectionOp('compress')}
+            onMassDuplicate={() => runSelectionOp('duplicate')}
             onMassCopyTo={() => beginMassTransfer('copy')}
             onMassMoveTo={() => beginMassTransfer('move')}
           />

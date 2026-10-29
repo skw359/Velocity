@@ -1252,6 +1252,28 @@ apiRouter.get('/info', async (req, res) => {
     }
 });
 
+// Totals for a multi-selection: how many files/folders, combined size, and the newest change.
+apiRouter.post('/info-multiple', async (req, res) => {
+    const selection = await resolveSelection(req.body && req.body.items, req, res);
+    if (!selection) return;
+
+    const info = { files: 0, folders: 0, size: 0, count: 0, modified: null };
+    for (const { stats, itemPath } of selection) {
+        if (stats.isDirectory()) {
+            const dirStats = await getDirectoryStats(itemPath);
+            info.folders++;
+            info.size += dirStats.totalSize;
+            info.count += dirStats.fileCount;
+        } else {
+            info.files++;
+            info.size += stats.size;
+            info.count++;
+        }
+        if (!info.modified || stats.mtime > info.modified) info.modified = stats.mtime;
+    }
+    res.json(info);
+});
+
 apiRouter.get('/thumbnail', async (req, res) => {
     let { path: imagePath, drive: driveId = 'internal' } = req.query;
     if (!imagePath) return res.status(400).send('Image path is required.');
@@ -1515,31 +1537,45 @@ apiRouter.get('/download', async (req, res) => {
     }
 });
 
-// A multi-selection as one zip: each item at the archive root, folders with their contents.
-apiRouter.post('/download-multiple', async (req, res) => {
-    const items = req.body && req.body.items;
-    if (!Array.isArray(items) || items.length === 0) return res.status(400).send('No items provided.');
-
-    const entries = [];
-    const usedNames = new Set();
+// Resolves a client multi-selection ([{ name, path, drive }]) to readable, stat'd paths.
+// Sends the error response itself and returns null if any item is invalid or gone.
+async function resolveSelection(items, req, res) {
+    if (!Array.isArray(items) || items.length === 0) { res.status(400).send('No items provided.'); return null; }
+    const resolved = [];
     for (const it of items) {
         const name = it && it.name;
         const driveId = (it && it.drive) || 'internal';
-        if (typeof name !== 'string' || !name) return res.status(400).send('Invalid item name.');
-        if (!assertReadable(driveId, req, res)) return;
+        if (typeof name !== 'string' || !name) { res.status(400).send('Invalid item name.'); return null; }
+        if (!assertReadable(driveId, req, res)) return null;
         const itemPath = getSafePath(path.join(it.path || '/', name), driveId, req.user);
-        if (!itemPath) return res.status(400).send('Invalid path.');
-        let stats;
-        try { stats = await fs.promises.stat(itemPath); }
-        catch { return res.status(404).send(`'${name}' no longer exists.`); }
-        // Same-named items from different folders (search results) would overwrite each other on extract.
-        let entryName = name;
-        for (let n = 1; usedNames.has(entryName.toLowerCase()); n++) {
-            entryName = suffixedTransferName(name, stats.isDirectory(), n);
-        }
-        usedNames.add(entryName.toLowerCase());
-        entries.push({ itemPath, entryName, isDirectory: stats.isDirectory() });
+        if (!itemPath) { res.status(400).send('Invalid path.'); return null; }
+        try { resolved.push({ name, path: it.path || '/', drive: driveId, itemPath, stats: await fs.promises.stat(itemPath) }); }
+        catch { res.status(404).send(`'${name}' no longer exists.`); return null; }
     }
+    return resolved;
+}
+
+// Names for laying several items side by side (zip root, combined archive, multi-item share):
+// same-named items from different folders (search results) get -1, -2, ... suffixes.
+function uniqueEntryNames(entries) {
+    const used = new Set();
+    return entries.map(({ name, isDirectory }) => {
+        let entryName = name;
+        for (let n = 1; used.has(entryName.toLowerCase()); n++) {
+            entryName = suffixedTransferName(name, isDirectory, n);
+        }
+        used.add(entryName.toLowerCase());
+        return entryName;
+    });
+}
+
+// A multi-selection as one zip: each item at the archive root, folders with their contents.
+apiRouter.post('/download-multiple', async (req, res) => {
+    const selection = await resolveSelection(req.body && req.body.items, req, res);
+    if (!selection) return;
+
+    const entryNames = uniqueEntryNames(selection.map((s) => ({ name: s.name, isDirectory: s.stats.isDirectory() })));
+    const entries = selection.map((s, i) => ({ itemPath: s.itemPath, entryName: entryNames[i], isDirectory: s.stats.isDirectory() }));
 
     logger.info(`[Download] Started: ${entries.length} items (zip) [IP: ${req.ip}]`);
     const archive = archiver('zip', { zlib: { level: 6 } });
@@ -1597,6 +1633,23 @@ apiRouter.post('/share', upload.none(), (req, res) => {
         type: stats.isDirectory() ? 'folder' : 'file',
     });
     logger.info(`[Shares] Link ${rec.token} -> ${name} (${rec.access}) [IP: ${req.ip}]`);
+    res.json({ share: publicShare(rec) });
+});
+
+// One link for several items, which viewers see as a folder holding them. Returns the
+// existing link if this exact selection is already shared.
+apiRouter.post('/share-multiple', async (req, res) => {
+    const selection = await resolveSelection(req.body && req.body.items, req, res);
+    if (!selection) return;
+    const driveId = selection[0].drive;
+    if (selection.some((s) => s.drive !== driveId)) return res.status(400).send('Items must be on the same drive.');
+    const entryNames = uniqueEntryNames(selection.map((s) => ({ name: s.name, isDirectory: s.stats.isDirectory() })));
+    const rec = shareStore.createSelection({
+        ownerId: req.user.id,
+        drive: driveId,
+        items: selection.map((s, i) => ({ name: s.name, path: s.path, entryName: entryNames[i] })),
+    });
+    logger.info(`[Shares] Link ${rec.token} -> ${selection.length} items (${rec.access}) [IP: ${req.ip}]`);
     res.json({ share: publicShare(rec) });
 });
 
@@ -1776,7 +1829,8 @@ const VALID_OP_TYPES = ['copy', 'move', 'duplicate', 'upload', 'extract', 'compr
 function operationAccessError(type, destDrive, rows, user) {
   const needWrite = new Set();
   const needRead = new Set();
-  if (type === 'copy' || type === 'move' || type === 'upload') needWrite.add(destDrive);
+  // A multi-item compress writes its one archive to destDrive.
+  if (type === 'copy' || type === 'move' || type === 'upload' || type === 'compress') needWrite.add(destDrive);
   if (type === 'copy') rows.forEach((row) => needRead.add(row.sourceDrive));
   else if (type !== 'upload') rows.forEach((row) => needWrite.add(row.sourceDrive));
 
@@ -1829,12 +1883,16 @@ apiRouter.post('/operations', async (req, res) => {
     // The runner treats a pre-existing target as "already done" (resume), so a fresh
     // clash must be rejected here.
     if (type === 'extract') {
-      const it = items[0] || {};
-      const base = getSafePath(it.sourcePath || '/', it.sourceDrive || 'internal', req.user);
-      const ext = path.extname(it.name || '').toLowerCase();
-      const dirName = (it.name || '').endsWith('.tar.gz') ? it.name.replace(/\.tar\.gz$/, '') : path.basename(it.name || '', ext);
-      if (base && dirName && fs.existsSync(path.join(base, dirName))) return res.status(409).send('Folder already exists.');
-    } else if (type === 'compress') {
+      for (const it of items) {
+        const base = getSafePath(it.sourcePath || '/', it.sourceDrive || 'internal', req.user);
+        const ext = path.extname(it.name || '').toLowerCase();
+        const dirName = (it.name || '').endsWith('.tar.gz') ? it.name.replace(/\.tar\.gz$/, '') : path.basename(it.name || '', ext);
+        if (base && dirName && fs.existsSync(path.join(base, dirName))) {
+          return res.status(409).send(items.length === 1 ? 'Folder already exists.' : `A folder named '${dirName}' already exists next to '${it.name}'.`);
+        }
+      }
+    } else if (type === 'compress' && items.length === 1) {
+      // Only a lone item has a fixed archive name; several items get one the runner picks free.
       const it = items[0] || {};
       const src = getSafePath(path.join(it.sourcePath || '/', it.name || ''), it.sourceDrive || 'internal', req.user);
       if (src && fs.existsSync(`${src}.tar.gz`)) return res.status(409).send('Archive already exists.');
@@ -1990,43 +2048,67 @@ function resolveShare(req, res) {
         res.status(404).json({ error: 'gone' }); return null;
     }
     // Resolve inside the owner's storage, never the viewer's.
+    if (rec.items) {
+        // A multi-item share has no folder of its own: its root lists whichever items still exist.
+        const entries = rec.items
+            .map((it) => ({ name: it.entryName, abs: getSafePathForUser(path.join(it.path, it.name), rec.drive, rec.ownerId) }))
+            .filter((e) => e.abs && fs.existsSync(e.abs));
+        if (entries.length === 0) { res.status(404).json({ error: 'gone' }); return null; }
+        return { rec, entries };
+    }
     const root = getSafePathForUser(path.join(rec.path, rec.name), rec.drive, rec.ownerId);
     if (!root || !fs.existsSync(root)) { res.status(404).json({ error: 'gone' }); return null; }
     return { rec, root };
 }
 
-// Returns null if the subpath would escape the share root.
-function resolveShareSubpath(root, subpath) {
-    if (!subpath) return root;
-    const target = path.resolve(path.join(root, subpath));
+// Returns null if the subpath would escape the share. In a multi-item share the first
+// segment picks the item, and its root (no subpath) has no single path on disk.
+function resolveShareSubpath(r, subpath) {
+    let root = r.root;
+    let rest = subpath;
+    if (r.entries) {
+        const [first, ...tail] = subpath.split('/');
+        const entry = r.entries.find((e) => e.name === first);
+        if (!entry) return null;
+        root = entry.abs;
+        rest = tail.join('/');
+    }
+    if (!rest) return root;
+    const target = path.resolve(path.join(root, rest));
     return isPathInside(root, target) ? target : null;
 }
 
 shareViewRouter.get('/:token', (req, res) => {
     const r = resolveShare(req, res); if (!r) return;
-    res.json({ name: r.rec.name, type: r.rec.type, access: r.rec.access });
+    const name = r.entries ? `${r.entries.length} ${r.entries.length === 1 ? 'item' : 'items'}` : r.rec.name;
+    res.json({ name, type: r.rec.type, access: r.rec.access });
 });
 
 shareViewRouter.get('/:token/list', async (req, res) => {
     const r = resolveShare(req, res); if (!r) return;
-    if (r.rec.type !== 'folder') return res.status(400).json({ error: 'not_a_folder' });
-    const target = resolveShareSubpath(r.root, req.query.subpath || '');
-    if (!target) return res.status(400).json({ error: 'invalid_path' });
+    if (r.rec.type === 'file') return res.status(400).json({ error: 'not_a_folder' });
+    const subpath = req.query.subpath || '';
     try {
-        const entries = await fs.promises.readdir(target, { withFileTypes: true });
-        const items = await Promise.all(entries
-            .filter(e => !isHiddenSystemEntry(e.name))
-            .map(async (e) => {
-                try {
-                    const st = await fs.promises.stat(path.join(target, e.name));
-                    return {
-                        name: e.name,
-                        type: e.isDirectory() ? 'folder' : 'file',
-                        mtime: st.mtime,
-                        size: st.isFile() ? st.size : undefined,
-                    };
-                } catch { return null; }
-            }));
+        let children;
+        if (r.entries && !subpath) {
+            children = r.entries;
+        } else {
+            const target = resolveShareSubpath(r, subpath);
+            if (!target) return res.status(400).json({ error: 'invalid_path' });
+            const names = await fs.promises.readdir(target);
+            children = names.filter((n) => !isHiddenSystemEntry(n)).map((n) => ({ name: n, abs: path.join(target, n) }));
+        }
+        const items = await Promise.all(children.map(async ({ name, abs }) => {
+            try {
+                const st = await fs.promises.stat(abs);
+                return {
+                    name,
+                    type: st.isDirectory() ? 'folder' : 'file',
+                    mtime: st.mtime,
+                    size: st.isFile() ? st.size : undefined,
+                };
+            } catch { return null; }
+        }));
         res.json(items.filter(Boolean));
     } catch (err) {
         logger.error(`[Shares] List failed for ${req.params.token}: ${err.message}`);
@@ -2037,7 +2119,7 @@ shareViewRouter.get('/:token/list', async (req, res) => {
 // Inline with range support, so shared videos can be scrubbed.
 shareViewRouter.get('/:token/raw', countDownloadBytes, (req, res) => {
     const r = resolveShare(req, res); if (!r) return;
-    const target = resolveShareSubpath(r.root, req.query.subpath || '');
+    const target = resolveShareSubpath(r, req.query.subpath || '');
     if (!target) return res.status(400).send('Invalid path.');
     let st;
     try { st = fs.statSync(target); } catch { return res.status(404).send('Not found.'); }
@@ -2047,9 +2129,35 @@ shareViewRouter.get('/:token/raw', countDownloadBytes, (req, res) => {
     });
 });
 
+// Streams a zip that `fill(archive)` populates; stops zipping if the viewer disconnects.
+function streamShareZip(res, fileName, fill) {
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    archive.on('error', (err) => {
+        if (!res.headersSent) res.status(500).send('Error creating archive.');
+        else res.destroy(err);
+    });
+    archive.on('end', () => bandwidth.addDownloaded(archive.pointer()));
+    res.on('close', () => { if (!res.writableFinished) archive.abort(); });
+    res.attachment(fileName);
+    archive.pipe(res);
+    fill(archive);
+    archive.finalize().catch(() => { /* surfaced via 'error' above */ });
+}
+
 shareViewRouter.get('/:token/download', countDownloadBytes, (req, res) => {
     const r = resolveShare(req, res); if (!r) return;
-    const target = resolveShareSubpath(r.root, req.query.subpath || '');
+    const subpath = req.query.subpath || '';
+    // The root of a multi-item share downloads every item it holds, side by side.
+    if (r.entries && !subpath) {
+        logger.info(`[Shares] Download ${req.params.token}: ${r.entries.length} items [IP: ${req.ip}]`);
+        return streamShareZip(res, 'download.zip', (archive) => {
+            for (const e of r.entries) {
+                if (fs.statSync(e.abs).isDirectory()) archive.directory(e.abs, e.name);
+                else archive.file(e.abs, { name: e.name });
+            }
+        });
+    }
+    const target = resolveShareSubpath(r, subpath);
     if (!target) return res.status(400).send('Invalid path.');
     let st;
     try { st = fs.statSync(target); } catch { return res.status(404).send('Not found.'); }
@@ -2066,17 +2174,7 @@ shareViewRouter.get('/:token/download', countDownloadBytes, (req, res) => {
         });
     } else {
         logger.info(`[Shares] Download ${req.params.token}: ${baseName} (folder) [IP: ${req.ip}]`);
-        const archive = archiver('zip', { zlib: { level: 6 } });
-        archive.on('error', (err) => {
-            if (!res.headersSent) res.status(500).send('Error creating archive.');
-            else res.destroy(err);
-        });
-        archive.on('end', () => bandwidth.addDownloaded(archive.pointer()));
-        res.on('close', () => { if (!res.writableFinished) archive.abort(); });
-        res.attachment(`${baseName}.zip`);
-        archive.pipe(res);
-        archive.directory(target, false);
-        archive.finalize().catch(() => { /* surfaced via 'error' above */ });
+        streamShareZip(res, `${baseName}.zip`, (archive) => archive.directory(target, false));
     }
 });
 
@@ -2391,7 +2489,7 @@ let operationReaper = null;
             logger.info(`[Startup] Ready, serving on port ${PORT}`);
 
             // Resume jobs that were mid-flight when the process last died.
-            runner.init({ getSafePath: getSafePathForUser, isPathInside, findFreeTransferName });
+            runner.init({ getSafePath: getSafePathForUser, isPathInside, findFreeTransferName, uniqueEntryNames });
             spaceCheck.init({ getSafePath: getSafePathForUser, driveName, formatBytes });
             operationStore.requeueUnfinished();
             runner.start();

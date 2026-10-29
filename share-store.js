@@ -1,4 +1,5 @@
 // access: 'restricted' opens only for the owner's session; 'public' for anyone with the link.
+// type 'selection' records share several items (rec.items) and have no path/name of their own.
 // One share per (owner, drive, path, name). The owner is in the key so two accounts sharing
 // the same relative path can't collapse onto one token and manage each other's link.
 
@@ -47,9 +48,14 @@ function targetKey(ownerId, drive, p, name) {
 function findByTarget(ownerId, drive, p, name) {
   const key = targetKey(ownerId, drive, p, name);
   for (const rec of shares.values()) {
-    if (targetKey(rec.ownerId, rec.drive, rec.path, rec.name) === key) return rec;
+    if (!rec.items && targetKey(rec.ownerId, rec.drive, rec.path, rec.name) === key) return rec;
   }
   return null;
+}
+
+// Order-independent, so re-sharing the same selection finds its existing link.
+function selectionKey(ownerId, drive, items) {
+  return JSON.stringify(items.map((it) => targetKey(ownerId, drive, it.path, it.name)).sort());
 }
 
 function get(token) {
@@ -65,23 +71,46 @@ function listByOwner(ownerId) {
   return [...shares.values()].filter((r) => r.ownerId === ownerId);
 }
 
+function insert(fields) {
+  const rec = {
+    token: crypto.randomBytes(16).toString('hex'),
+    ...fields,
+    access: fields.access === 'public' ? 'public' : 'restricted',
+    createdAt: new Date().toISOString(),
+  };
+  shares.set(rec.token, rec);
+  persist();
+  return rec;
+}
+
 function create({ ownerId, name, path: p, drive, type, access }) {
   const existing = findByTarget(ownerId, drive, p, name);
   if (existing) return existing;
-  const token = crypto.randomBytes(16).toString('hex');
-  const rec = {
-    token,
+  return insert({
     ownerId: ownerId || null,
     name,
     path: p == null ? '/' : p,
     drive: drive || 'internal',
     type: type === 'folder' ? 'folder' : 'file',
-    access: access === 'public' ? 'public' : 'restricted',
-    createdAt: new Date().toISOString(),
-  };
-  shares.set(token, rec);
-  persist();
-  return rec;
+    access,
+  });
+}
+
+// One link for several items on one drive. items: [{ name, path, entryName }], where
+// entryName is unique within the share and is the name viewers see.
+function createSelection({ ownerId, drive, items, access }) {
+  const key = selectionKey(ownerId, drive, items);
+  for (const rec of shares.values()) {
+    if (rec.items && selectionKey(rec.ownerId, rec.drive, rec.items) === key) return rec;
+  }
+  return insert({
+    ownerId: ownerId || null,
+    name: `${items.length} items`,
+    drive: drive || 'internal',
+    type: 'selection',
+    items: items.map((it) => ({ name: it.name, path: it.path == null ? '/' : it.path, entryName: it.entryName })),
+    access,
+  });
 }
 
 function setAccess(token, access) {
@@ -101,6 +130,6 @@ function remove(token) {
 load();
 
 module.exports = {
-  get, create, findByTarget, setAccess, remove,
+  get, create, createSelection, findByTarget, setAccess, remove,
   isOwner, listByOwner,
 };

@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
-import { apiGetInfo } from '../../api/fetch';
+import { apiGetInfo, apiGetSelectionInfo } from '../../api/fetch';
 import { formatBytes, formatDateTime } from '../../utils/format';
 
-export default function InfoModal({ show, name, path, drive, onClose }) {
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+// `items` ([{ name, path, drive }]) shows combined totals for a multi-selection instead of one item.
+export default function InfoModal({ show, name, path, drive, items, onClose }) {
   const [info, setInfo] = useState(null);
   const [visible, setVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -13,18 +16,18 @@ export default function InfoModal({ show, name, path, drive, onClose }) {
   }, [show]);
 
   useEffect(() => {
-    if (!show || !name) return;
+    if (!show || (!name && !items)) return;
     setInfo(null);
     (async () => {
       try {
-        const data = await apiGetInfo(name, path, drive);
+        const data = items ? await apiGetSelectionInfo(items) : await apiGetInfo(name, path, drive);
         setInfo(data);
       } catch (error) {
         console.error(error);
         setInfo({ error: true });
       }
     })();
-  }, [show, name, path, drive]);
+  }, [show, name, path, drive, items]);
 
   if (!mounted) return null;
 
@@ -39,9 +42,24 @@ export default function InfoModal({ show, name, path, drive, onClose }) {
               <line x1="12" y1="8" x2="12.01" y2="8"></line>
             </svg>
           </div>
-          <div className="info-filename">{name}</div>
+          <div className="info-filename">{items ? `${items.length} items selected` : name}</div>
         </div>
 
+        {items ? (
+        <div className="info-grid">
+          <div className="info-label">Items</div>
+          <div className="info-value">{info ? (info.error ? 'Error' : [info.files && plural(info.files, 'file'), info.folders && plural(info.folders, 'folder')].filter(Boolean).join(', ')) : <span className="loading-text">Loading...</span>}</div>
+
+          <div className="info-label">Total Size</div>
+          <div className="info-value">{info ? (info.error ? 'Error' : formatBytes(info.size)) : <span className="loading-text">Calculating...</span>}</div>
+
+          <div className="info-label">Contains</div>
+          <div className="info-value">{info ? (info.error ? 'Error' : plural(info.count, 'file')) : <span className="loading-text">Counting...</span>}</div>
+
+          <div className="info-label">Last Modified</div>
+          <div className="info-value">{info ? (info.error ? 'Error' : formatDateTime(info.modified)) : <span className="loading-text">Fetching...</span>}</div>
+        </div>
+        ) : (
         <div className="info-grid">
           <div className="info-label">Type</div>
           <div className="info-value">{info ? (info.error ? 'Error' : info.type === 'folder' ? 'Folder' : 'File') : <span className="loading-text">Loading...</span>}</div>
@@ -58,6 +76,7 @@ export default function InfoModal({ show, name, path, drive, onClose }) {
           <div className="info-label">Last Modified</div>
           <div className="info-value">{info ? (info.error ? 'Error' : formatDateTime(info.modified)) : <span className="loading-text">Fetching...</span>}</div>
         </div>
+        )}
 
         <div className="modal-buttons">
           <button className="modal-button modal-button-cancel" style={{ width: '100%' }} onClick={onClose}>Close</button>

@@ -211,6 +211,45 @@ async function performCompress({ userId, name, path: currentPath = '/', type, dr
   await fs.promises.rename(partial, outputPath);
 }
 
+// A compress op with several items builds one archive in op.destPath. Its name is picked
+// free on the first run and pinned on the items, so a resume rebuilds the same file.
+async function performCompressMany(op) {
+  const destDir = deps.getSafePath(op.destPath || '/', op.destDrive, op.user);
+  if (!destDir) throw new OpError(400, 'Invalid destination path.');
+  const sources = op.items.map((it) => {
+    const src = deps.getSafePath(path.join(it.sourcePath || '/', it.name), it.sourceDrive, op.user);
+    if (!src || !fs.existsSync(src)) throw new OpError(404, `'${it.name}' not found.`);
+    return { name: it.name, src, isDirectory: fs.statSync(src).isDirectory() };
+  });
+
+  let archiveName = op.items[0].targetName;
+  if (archiveName && fs.existsSync(path.join(destDir, archiveName))) return; // resume: already built
+  if (!archiveName) {
+    archiveName = 'Archive.tar.gz';
+    for (let n = 1; fs.existsSync(path.join(destDir, archiveName)); n++) archiveName = `Archive-${n}.tar.gz`;
+    op.items.forEach((it) => store.setItemTarget(op.id, it.id, archiveName));
+  }
+
+  const outputPath = path.join(destDir, archiveName);
+  const partial = `${outputPath}.partial-${op.id}`;
+  await fs.promises.rm(partial, { force: true });
+  const entryNames = deps.uniqueEntryNames(sources);
+  await new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(partial);
+    const archive = archiver('tar', { gzip: true });
+    output.on('close', resolve);
+    output.on('error', reject);
+    archive.on('error', reject);
+    archive.pipe(output);
+    sources.forEach(({ src, isDirectory }, i) => {
+      if (isDirectory) archive.directory(src, entryNames[i]);
+      else archive.file(src, { name: entryNames[i] });
+    });
+    archive.finalize();
+  });
+  await fs.promises.rename(partial, outputPath);
+}
+
 async function performRename({ userId, oldName, newName, path: currentPath = '/', drive = 'internal' } = {}) {
   if (!oldName || !newName) throw new OpError(400, 'Old and new names are required.');
   if (newName.includes('/') || newName.includes('\\')) throw new OpError(400, 'Invalid characters in the new name.');
@@ -304,20 +343,23 @@ async function processOp(op) {
 
     const pending = fresh.items.filter((it) => it.status !== 'completed');
     let firstError = null;
-    const queue = pending.slice();
+    // Each queue entry is a group of items that succeed or fail together: one item normally,
+    // or every item of a multi-item compress, which all go into one archive.
+    const combined = fresh.type === 'compress' && fresh.items.length > 1;
+    const queue = combined ? (pending.length ? [pending] : []) : pending.map((item) => [item]);
 
     const worker = async () => {
       while (queue.length) {
         if (stopped || store.isCanceled(op.id)) return;
-        const item = queue.shift();
-        store.markItem(op.id, item.id, 'running', null);
+        const group = queue.shift();
+        group.forEach((item) => store.markItem(op.id, item.id, 'running', null));
         try {
-          await performItem(fresh, item);
-          store.itemDone(op.id, item.id);
+          await (combined ? performCompressMany(fresh) : performItem(fresh, group[0]));
+          group.forEach((item) => store.itemDone(op.id, item.id));
         } catch (e) {
           const msg = e && e.message ? e.message : String(e);
           if (!firstError) firstError = msg;
-          store.itemFail(op.id, item.id, msg);
+          group.forEach((item) => store.itemFail(op.id, item.id, msg));
         }
       }
     };

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { apiGetShare, apiCreateShare, apiSetShareAccess, apiRevokeShare } from '../../api/fetch';
+import { apiGetShare, apiCreateShare, apiCreateSelectionShare, apiSetShareAccess, apiRevokeShare } from '../../api/fetch';
 
 // The Clipboard API needs a secure context; on plain-http LANs fall back to execCommand.
 async function copyText(text) {
@@ -25,7 +25,8 @@ async function copyText(text) {
   }
 }
 
-export default function ShareModal({ show, name, type, path, drive, onClose }) {
+// `items` ([{ name, path, drive }]) shares a multi-selection as one link instead of one item.
+export default function ShareModal({ show, name, type, path, drive, items, onClose }) {
   const [visible, setVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -39,11 +40,13 @@ export default function ShareModal({ show, name, type, path, drive, onClose }) {
     else { setVisible(false); const t = setTimeout(() => setMounted(false), 250); return () => clearTimeout(t); }
   }, [show]);
 
-  // On open, look up whether this item already has a share link.
+  // On open, look up whether this item already has a share link. A selection skips the
+  // lookup: creating its link hands back the existing one.
   useEffect(() => {
-    if (!show || !name) return;
+    if (!show || (!name && !items)) return;
     setShare(null);
     setCopied(false);
+    if (items) { setLoading(false); return; }
     setLoading(true);
     let cancelled = false;
     (async () => {
@@ -57,7 +60,7 @@ export default function ShareModal({ show, name, type, path, drive, onClose }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [show, name, path, drive]);
+  }, [show, name, path, drive, items]);
 
   useEffect(() => () => clearTimeout(copyTimer.current), []);
 
@@ -65,12 +68,13 @@ export default function ShareModal({ show, name, type, path, drive, onClose }) {
 
   const fullUrl = share ? `${window.location.origin}${share.url}` : '';
   const isPublic = share?.access === 'public';
-  const noun = type === 'folder' ? 'folder' : 'file';
+  const noun = items ? 'items' : type === 'folder' ? 'folder' : 'file';
+  const these = items ? 'these' : 'this';
 
   const handleCreate = async () => {
     setBusy(true);
     try {
-      const { share } = await apiCreateShare(name, path, drive);
+      const { share } = items ? await apiCreateSelectionShare(items) : await apiCreateShare(name, path, drive);
       setShare(share);
     } catch (e) {
       alert(e.message || 'Could not create share link.');
@@ -129,14 +133,14 @@ export default function ShareModal({ show, name, type, path, drive, onClose }) {
           </svg>
         </div>
         <h3 className="modal-title">Share</h3>
-        <p className="share-subtitle">{name}</p>
+        <p className="share-subtitle">{items ? `${items.length} items` : name}</p>
 
         {loading ? (
           <p className="share-status">Loading…</p>
         ) : !share ? (
           <>
             <p className="share-status">
-              Create a link to share this {noun}. You control who can open it.
+              Create a link to share {these} {noun}. You control who can open it.
             </p>
             <div className="modal-buttons">
               <button className="modal-button modal-button-cancel" disabled={busy} onClick={onClose}>Cancel</button>
@@ -165,8 +169,8 @@ export default function ShareModal({ show, name, type, path, drive, onClose }) {
                 <span className="share-access-label">Anyone with the link can view</span>
                 <span className="share-access-desc">
                   {isPublic
-                    ? `Anyone with this link can open and view this ${noun}, no account needed.`
-                    : `Only signed-in users can open this link. Turn on to let anyone view this ${noun}.`}
+                    ? `Anyone with this link can open and view ${these} ${noun}, no account needed.`
+                    : `Only signed-in users can open this link. Turn on to let anyone view ${these} ${noun}.`}
                 </span>
               </div>
               <label className="toggle-switch">

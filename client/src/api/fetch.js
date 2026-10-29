@@ -57,6 +57,17 @@ export async function apiGetInfo(name, path, drive) {
   return res.json();
 }
 
+// items: [{ name, path, drive }]. Combined totals for a multi-selection.
+export async function apiGetSelectionInfo(items) {
+  const res = await fetchWithAuthCheck('/api/info-multiple', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items }),
+  });
+  if (!res.ok) throw new Error('Failed to fetch info');
+  return res.json();
+}
+
 export async function apiDeleteItem(name, path, drive) {
   const formData = new FormData();
   formData.append('name', name);
@@ -305,6 +316,18 @@ export async function apiCreateShare(name, path, drive) {
   formData.append('drive', drive);
   const res = await fetchWithAuthCheck('/api/share', { method: 'POST', body: formData });
   if (!res.ok) throw new Error('Failed to create share link');
+  return res.json();
+}
+
+// items: [{ name, path, drive }]. One link for all of them; returns the existing one if this
+// exact selection is already shared.
+export async function apiCreateSelectionShare(items) {
+  const res = await fetchWithAuthCheck('/api/share-multiple', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items }),
+  });
+  if (!res.ok) throw new Error((await res.text()) || 'Failed to create share link');
   return res.json();
 }
 

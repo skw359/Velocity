@@ -70,6 +70,11 @@ export function getFileExtension(name) {
   return name.split('.').pop().toLowerCase();
 }
 
+// Archives get Extract instead of Compress in the actions menus.
+export function isArchiveItem(name, type) {
+  return type === 'file' && archiveExtensions.includes(getFileExtension(name));
+}
+
 // Coarse type for the "view by type" filter; must match FileItem's icon logic.
 export function getFileCategory(item) {
   if (item.type === 'folder') return 'folder';

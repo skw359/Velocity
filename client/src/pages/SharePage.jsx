@@ -249,12 +249,13 @@ export default function SharePage() {
             <h2>Link not found</h2>
             <p className="share-status">This share link is invalid or has been removed.</p>
           </div>
-        ) : meta.type === 'folder' ? (
+        ) : meta.type !== 'file' ? (
+          // A multi-item share ('selection') browses like a folder holding the shared items.
           <div className="share-card share-card-wide">
             <div className="share-head">
               <div className="share-head-info">
                 <h2 className="share-head-name">{meta.name}</h2>
-                <span className="share-head-sub">Shared folder</span>
+                <span className="share-head-sub">{meta.type === 'selection' ? 'Shared items' : 'Shared folder'}</span>
               </div>
               <a className="modal-button modal-button-delete" href={shareDownloadUrl(token)}>Download all (.zip)</a>
             </div>
