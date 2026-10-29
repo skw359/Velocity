@@ -24,8 +24,9 @@ function requiredPackages(file) {
   return names;
 }
 
-// isBuiltin also knows prefix-only modules such as node:sqlite.
-const isBuiltin = (spec) => require('module').isBuiltin(spec) || builtinModules.includes(spec);
+// The node: scheme only ever names core modules, including ones newer than the running
+// Node (db.js falls back to node:sqlite, which Node 20 doesn't have).
+const isBuiltin = (spec) => spec.startsWith('node:') || builtinModules.includes(spec);
 const packageName = (spec) => (spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]);
 
 test('every package the server requires is declared, and every declared one is used', () => {

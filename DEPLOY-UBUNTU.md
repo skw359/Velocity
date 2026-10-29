@@ -20,17 +20,16 @@ sudo apt install -y nodejs
 `package.json` declares `"engines": { "node": ">=20" }`, so npm will warn you
 rather than leave you to decode a build error.
 
-## 2. Build tools for the native modules
+## 2. Build tools, only as a fallback
 
-`diskusage` compiles from source — there are no prebuilt Linux binaries — so the
-toolchain has to be present:
+`bcrypt`, `better-sqlite3` and `sharp` ship prebuilt binaries for the common
+platforms, so a normal install compiles nothing. If none matches your system (an
+unusual CPU or C library), npm compiles from source instead, which needs the
+toolchain:
 
 ```sh
 sudo apt install -y build-essential python3
 ```
-
-`bcrypt`, `better-sqlite3` and `sharp` all ship prebuilt linux-x64 binaries and
-need no compiler.
 
 **Do not copy `node_modules/` over from Windows.** The native modules in it are
 Windows binaries. Install fresh on the target:

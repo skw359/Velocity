@@ -3,7 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const disk = require('diskusage');
+const disk = require('./disk-space');
 const logger = require('./logger');
 const store = require('./operation-store');
 
