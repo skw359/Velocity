@@ -817,14 +817,15 @@ use_private_node() {
   NODE_EXEC=$RUNTIME_DIR/node/bin/node
 }
 
-# Vite needs ^20.19.0 || >=22.12.0.
+# 22.12 or newer: Vite needs it on the 22 line, and better-sqlite3 ships no binaries for
+# Node 20 (which has reached end of life), so it would have to be compiled there.
 system_node_ok() {
   local node
   node=$(command -v node 2>/dev/null) || return 1
   command -v npm >/dev/null 2>&1 || return 1
   "$node" -e '
     const [major, minor] = process.versions.node.split(".").map(Number);
-    process.exit(major >= 23 || (major === 22 && minor >= 12) || (major === 20 && minor >= 19) ? 0 : 1);
+    process.exit(major >= 23 || (major === 22 && minor >= 12) ? 0 : 1);
   ' >/dev/null 2>&1
 }
 

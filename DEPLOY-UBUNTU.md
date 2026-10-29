@@ -6,18 +6,20 @@
 The server is portable Node and runs on Ubuntu. Two things need attention before
 it will start, and a third before external drives appear.
 
-## 1. Node 20 or newer
+## 1. Node 22.12 or newer
 
 `apt install nodejs` on Ubuntu 24.04 gives you Node **18**, which
-`better-sqlite3@12` does not support — the install fails while compiling. Use
-NodeSource or nvm:
+`better-sqlite3@12` does not support — the install fails while compiling. Node 20
+has reached end of life, and `better-sqlite3` no longer ships prebuilt binaries for
+it, so an install on Node 20 compiles it from source (and on Windows, Node 20's
+build tooling can't use Visual Studio 2026). Use NodeSource or nvm:
 
 ```sh
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
 ```
 
-`package.json` declares `"engines": { "node": ">=20" }`, so npm will warn you
+`package.json` declares `"engines": { "node": ">=22.12" }`, so npm will warn you
 rather than leave you to decode a build error.
 
 ## 2. Build tools, only as a fallback
