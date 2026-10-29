@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { apiGetShare, apiCreateShare, apiCreateSelectionShare, apiSetShareAccess, apiRevokeShare } from '../../api/fetch';
+import { useModalTransition } from '../../hooks/useModalTransition';
 
 // The Clipboard API needs a secure context; on plain-http LANs fall back to execCommand.
 async function copyText(text) {
@@ -27,18 +28,13 @@ async function copyText(text) {
 
 // `items` ([{ name, path, drive }]) shares a multi-selection as one link instead of one item.
 export default function ShareModal({ show, name, type, path, drive, items, onClose }) {
-  const [visible, setVisible] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [share, setShare] = useState(null);
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef(null);
 
-  useEffect(() => {
-    if (show) { setMounted(true); requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true))); }
-    else { setVisible(false); const t = setTimeout(() => setMounted(false), 250); return () => clearTimeout(t); }
-  }, [show]);
+  const { mounted, visible } = useModalTransition(show);
 
   // On open, look up whether this item already has a share link. A selection skips the
   // lookup: creating its link hands back the existing one.

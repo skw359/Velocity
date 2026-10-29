@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { formatBytes } from '../utils/format';
 import { topLevelName } from '../utils/conflicts';
@@ -282,7 +282,7 @@ export function useUpload(onFinish) {
   const { dispatch, longOpStartImmediate, longOpStop, showOpError, dismissOpError } = useAppContext();
   const managerRef = useRef(null);
   const onFinishRef = useRef(onFinish);
-  onFinishRef.current = onFinish;
+  useEffect(() => { onFinishRef.current = onFinish; });
 
   const getManager = useCallback(() => {
     if (!managerRef.current) {

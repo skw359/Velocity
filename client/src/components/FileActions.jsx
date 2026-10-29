@@ -1,7 +1,7 @@
 import { useRef, useEffect } from 'react';
 import { archiveExtensions } from '../utils/format';
 
-export default function FileActions({ name, type, path, drive, extension, isGrid, open, onToggle, onClose, onShare, onDownload, onInfo, onExtract, onCompress, onCopy, onCopyTo, onMoveTo, onRename, onDelete }) {
+export default function FileActions({ type, extension, open, onToggle, onClose, onShare, onDownload, onInfo, onExtract, onCompress, onCopy, onCopyTo, onMoveTo, onRename, onDelete }) {
   const containerRef = useRef(null);
   const isArchive = archiveExtensions.includes(extension) && type === 'file';
 

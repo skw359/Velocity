@@ -1,26 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useModalTransition } from '../../hooks/useModalTransition';
 
 // Upload name conflicts, one at a time; "Do this for all" applies the next choice to the rest.
 export default function ConflictModal({ show, conflicts, onResolve, onCancel }) {
   const [index, setIndex] = useState(0);
   const [decisions, setDecisions] = useState({});
   const [applyAll, setApplyAll] = useState(false);
-  const [visible, setVisible] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const { mounted, visible } = useModalTransition(show);
 
-  useEffect(() => {
+  // Start from the first conflict each time the modal opens.
+  const [prevShow, setPrevShow] = useState(show);
+  if (show !== prevShow) {
+    setPrevShow(show);
     if (show) {
       setIndex(0);
       setDecisions({});
       setApplyAll(false);
-      setMounted(true);
-      requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
-    } else {
-      setVisible(false);
-      const t = setTimeout(() => setMounted(false), 250);
-      return () => clearTimeout(t);
     }
-  }, [show]);
+  }
 
   if (!mounted) return null;
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { apiShareMeta, apiShareList, shareRawUrl, shareDownloadUrl } from '../api/fetch';
 import {
@@ -94,26 +94,27 @@ function DownloadIcon() {
 
 function FolderView({ token, rootName }) {
   const [subpath, setSubpath] = useState('');
-  const [entries, setEntries] = useState(null);
-  const [error, setError] = useState(false);
+  // Tagged with the folder it lists, so navigating shows the loader instead of the old folder.
+  const [listing, setListing] = useState(null); // { token, subpath, entries, error }
+  const current = listing && listing.token === token && listing.subpath === subpath ? listing : null;
+  const entries = current?.entries ?? null;
+  const error = current?.error ?? false;
   const [preview, setPreview] = useState(null); // { subpath, name }
 
   useEffect(() => {
     let cancelled = false;
-    setEntries(null);
-    setError(false);
     (async () => {
       try {
         const data = await apiShareList(token, subpath);
-        if (!cancelled) setEntries(data);
+        if (!cancelled) setListing({ token, subpath, entries: data, error: false });
       } catch {
-        if (!cancelled) setError(true);
+        if (!cancelled) setListing({ token, subpath, entries: null, error: true });
       }
     })();
     return () => { cancelled = true; };
   }, [token, subpath]);
 
-  const segments = subpath ? subpath.split('/') : [];
+  const segments = useMemo(() => (subpath ? subpath.split('/') : []), [subpath]);
   const goToSegment = useCallback((i) => {
     setSubpath(i < 0 ? '' : segments.slice(0, i + 1).join('/'));
   }, [segments]);

@@ -8,44 +8,50 @@ export function useWebSocket({ onSearchResult, onSearchComplete, onSearchError }
     callbacksRef.current = { onSearchResult, onSearchComplete, onSearchError };
   });
 
-  const connect = useCallback(() => {
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${window.location.host}`;
-    const ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => console.log('Search WebSocket connected.');
-
-    ws.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-      const cbs = callbacksRef.current;
-      switch (message.type) {
-        case 'search_result':
-          cbs.onSearchResult?.(message.data);
-          break;
-        case 'search_complete':
-          cbs.onSearchComplete?.();
-          break;
-        case 'search_error':
-          cbs.onSearchError?.(message.message);
-          break;
-      }
-    };
-
-    ws.onclose = () => {
-      setTimeout(() => connect(), 3000);
-    };
-
-    ws.onerror = () => ws.close();
-
-    wsRef.current = ws;
-  }, []);
-
   useEffect(() => {
+    // Set on unmount so closing the socket doesn't schedule a reconnect.
+    let disposed = false;
+    let retryTimer = null;
+
+    const connect = () => {
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${wsProtocol}//${window.location.host}`;
+      const ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => console.log('Search WebSocket connected.');
+
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        const cbs = callbacksRef.current;
+        switch (message.type) {
+          case 'search_result':
+            cbs.onSearchResult?.(message.data);
+            break;
+          case 'search_complete':
+            cbs.onSearchComplete?.();
+            break;
+          case 'search_error':
+            cbs.onSearchError?.(message.message);
+            break;
+        }
+      };
+
+      ws.onclose = () => {
+        if (!disposed) retryTimer = setTimeout(connect, 3000);
+      };
+
+      ws.onerror = () => ws.close();
+
+      wsRef.current = ws;
+    };
+
     connect();
     return () => {
+      disposed = true;
+      clearTimeout(retryTimer);
       if (wsRef.current) wsRef.current.close();
     };
-  }, [connect]);
+  }, []);
 
   const startSearch = useCallback((query, drive) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {

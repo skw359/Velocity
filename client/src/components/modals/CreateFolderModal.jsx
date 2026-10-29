@@ -1,25 +1,24 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { useModalTransition } from '../../hooks/useModalTransition';
 
 export default function CreateFolderModal({ show, startOperation, onClose }) {
   const { state } = useAppContext();
   const [value, setValue] = useState('');
   const inputRef = useRef(null);
 
-  useEffect(() => {
-    if (show) {
-      setValue('');
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
-  }, [show]);
-
-  const [visible, setVisible] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [prevShow, setPrevShow] = useState(show);
+  if (show !== prevShow) {
+    setPrevShow(show);
+    if (show) setValue('');
+  }
 
   useEffect(() => {
-    if (show) { setMounted(true); requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true))); }
-    else { setVisible(false); const t = setTimeout(() => setMounted(false), 250); return () => clearTimeout(t); }
+    if (show) setTimeout(() => inputRef.current?.focus(), 50);
   }, [show]);
+
+
+  const { mounted, visible } = useModalTransition(show);
 
   if (!mounted) return null;
 

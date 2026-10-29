@@ -96,7 +96,7 @@ function DashboardContent({ account }) {
     longOpStop('search');
   }, [longOpStop]);
 
-  const onSearchError = useCallback((message) => {
+  const onSearchError = useCallback(() => {
     if (isSearchCancelledRef.current) return;
     longOpStop('search');
   }, [longOpStop]);
@@ -190,7 +190,7 @@ function DashboardContent({ account }) {
     refreshOperationsRef.current?.();
   }, [loadFiles, loadStorageInfo]);
 
-  const { addEntries: uploadEntries, cancelAll: cancelUpload } = useUpload(refreshAfterUpload);
+  const { addEntries: uploadEntries } = useUpload(refreshAfterUpload);
 
   const performSearch = useCallback((query) => {
     setSearchQuery(query);

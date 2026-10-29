@@ -1,15 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useModalTransition } from '../../hooks/useModalTransition';
 
 // In-app window.confirm(), portaled to <body> so the caller's UI can't style or clip it.
 export default function ConfirmModal({ show, title, message, confirmLabel = 'Yes', cancelLabel = 'No', onConfirm, onCancel }) {
-  const [visible, setVisible] = useState(false);
-  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    if (show) { setMounted(true); requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true))); }
-    else { setVisible(false); const t = setTimeout(() => setMounted(false), 250); return () => clearTimeout(t); }
-  }, [show]);
+  const { mounted, visible } = useModalTransition(show);
 
   useEffect(() => {
     if (!show) return;

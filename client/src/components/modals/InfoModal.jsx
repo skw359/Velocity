@@ -1,32 +1,32 @@
 import { useState, useEffect } from 'react';
 import { apiGetInfo, apiGetSelectionInfo } from '../../api/fetch';
 import { formatBytes, formatDateTime } from '../../utils/format';
+import { useModalTransition } from '../../hooks/useModalTransition';
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 // `items` ([{ name, path, drive }]) shows combined totals for a multi-selection instead of one item.
 export default function InfoModal({ show, name, path, drive, items, onClose }) {
-  const [info, setInfo] = useState(null);
-  const [visible, setVisible] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  // Tagged with the item it describes, so switching items shows the loader instead of stale info.
+  const [result, setResult] = useState(null);
+  const info = result && result.name === name && result.path === path && result.drive === drive && result.items === items ? result.data : null;
 
-  useEffect(() => {
-    if (show) { setMounted(true); requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true))); }
-    else { setVisible(false); const t = setTimeout(() => setMounted(false), 250); return () => clearTimeout(t); }
-  }, [show]);
+  const { mounted, visible } = useModalTransition(show);
 
   useEffect(() => {
     if (!show || (!name && !items)) return;
-    setInfo(null);
+    let cancelled = false;
     (async () => {
+      let data;
       try {
-        const data = items ? await apiGetSelectionInfo(items) : await apiGetInfo(name, path, drive);
-        setInfo(data);
+        data = items ? await apiGetSelectionInfo(items) : await apiGetInfo(name, path, drive);
       } catch (error) {
         console.error(error);
-        setInfo({ error: true });
+        data = { error: true };
       }
+      if (!cancelled) setResult({ name, path, drive, items, data });
     })();
+    return () => { cancelled = true; };
   }, [show, name, path, drive, items]);
 
   if (!mounted) return null;

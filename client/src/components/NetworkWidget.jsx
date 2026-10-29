@@ -1,5 +1,4 @@
 import { useStats } from '../context/StatsContext';
-import { formatSpeed, formatBytes } from '../utils/format';
 
 export default function NetworkWidget() {
   const { state } = useStats();

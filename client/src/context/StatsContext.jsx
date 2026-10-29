@@ -48,6 +48,8 @@ export function StatsProvider({ children }) {
   );
 }
 
+// Kept beside its provider; editing this file does a full reload instead of a fast refresh.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useStats() {
   const ctx = useContext(StatsContext);
   if (!ctx) throw new Error('useStats must be used within StatsProvider');

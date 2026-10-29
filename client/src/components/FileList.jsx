@@ -1,8 +1,8 @@
-import { useEffect, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { fetchWithAuthCheck } from '../api/fetch';
 import { saveBlob } from '../utils/download';
-import { formatBytes, formatDate, getFileExtension, getContentBaseUrl, getFileCategory, imageExtensions, audioExtensions, videoExtensions, movExtensions, pdfExtensions, archiveExtensions, rawImageExtensions } from '../utils/format';
+import { getFileExtension, getFileCategory } from '../utils/format';
 import FileItem from './FileItem';
 import FileListHeader from './FileListHeader';
 
@@ -12,7 +12,7 @@ const nameCollator = new Intl.Collator(undefined, { numeric: true });
 
 const ITEMS_PER_PAGE = 100;
 
-export default function FileList({ searchResults, startOperation, onNavigateFolder, onPreview, onDelete, onRename, onInfo, onShare, onRefresh, onRefreshStorage }) {
+export default function FileList({ searchResults, startOperation, onNavigateFolder, onPreview, onDelete, onRename, onInfo, onShare }) {
   const { state, dispatch, longOpStart, longOpStop } = useAppContext();
 
   const enqueueItemOp = useCallback((type, name, path, itemType) => {

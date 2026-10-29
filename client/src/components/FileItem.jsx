@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { apiGetSize } from '../api/fetch';
 import { scheduleBackgroundTask } from '../utils/requestQueue';
-import { formatBytes, formatDate, getFileExtension, getContentBaseUrl, imageExtensions, audioExtensions, videoExtensions, movExtensions, pdfExtensions, archiveExtensions, rawImageExtensions } from '../utils/format';
+import { formatBytes, formatDate, getFileExtension, imageExtensions, audioExtensions, videoExtensions, movExtensions, pdfExtensions, archiveExtensions, rawImageExtensions } from '../utils/format';
 import FileActions from './FileActions';
 
 const ICON_COLORS = {
@@ -192,7 +192,7 @@ export default function FileItem({ item, itemPath, drive, isSearch, index, visib
     }, 220);
   }, [isGrid, open, handleSelectionClick]);
 
-  const handleCardDoubleClick = useCallback((e) => {
+  const handleCardDoubleClick = useCallback(() => {
     if (!isGrid) return;
     if (clickTimerRef.current) { clearTimeout(clickTimerRef.current); clickTimerRef.current = null; }
     open();

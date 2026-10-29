@@ -17,9 +17,10 @@ import 'prismjs/components/prism-yaml';
 import 'prismjs/components/prism-ini';
 import 'prismjs/components/prism-swift';
 import 'prismjs/themes/prism-tomorrow.css';
+import { useModalTransition } from '../../hooks/useModalTransition';
 
 export default function PreviewModal({ show, name, path, onClose }) {
-  const { state, dispatch } = useAppContext();
+  const { state } = useAppContext();
   const [content, setContent] = useState(null);
   const [contentType, setContentType] = useState('loading');
   const [galleryItems, setGalleryItems] = useState([]);
@@ -79,13 +80,8 @@ export default function PreviewModal({ show, name, path, onClose }) {
     return () => document.removeEventListener('keydown', handler);
   }, [show, galleryItems, galleryIndex, contentType]);
 
-  const [visible, setVisible] = useState(false);
-  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    if (show) { setMounted(true); requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true))); }
-    else { setVisible(false); const t = setTimeout(() => setMounted(false), 250); return () => clearTimeout(t); }
-  }, [show]);
+  const { mounted, visible } = useModalTransition(show);
 
 
   const persist = useCallback(async (text) => {
@@ -297,7 +293,7 @@ export default function PreviewModal({ show, name, path, onClose }) {
         setContentType('unsupported');
         setContent({ message: 'Preview not available for this file type.' });
       }
-    } catch (error) {
+    } catch {
       setContentType('error');
       setContent({ message: 'Error: Could not load file preview.' });
     }

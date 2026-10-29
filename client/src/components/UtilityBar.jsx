@@ -26,9 +26,12 @@ export default function UtilityBar({ onMassDelete, onMassShare, onMassDownload, 
     return () => document.removeEventListener('click', handler);
   }, [menuOpen]);
 
-  useEffect(() => {
+  // Close the menu when the bar hides.
+  const [prevShow, setPrevShow] = useState(show);
+  if (show !== prevShow) {
+    setPrevShow(show);
     if (!show) setMenuOpen(false);
-  }, [show]);
+  }
 
   return (
     <div className={`utility-bar${show ? ' show' : ''}`}>

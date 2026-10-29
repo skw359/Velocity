@@ -197,6 +197,8 @@ export function AppProvider({ children }) {
   );
 }
 
+// Kept beside its provider; editing this file does a full reload instead of a fast refresh.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAppContext() {
   const ctx = useContext(AppContext);
   if (!ctx) throw new Error('useAppContext must be used within AppProvider');

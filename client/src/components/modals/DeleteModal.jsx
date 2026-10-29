@@ -1,14 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useModalTransition } from '../../hooks/useModalTransition';
 
 export default function DeleteModal({ show, name, path, drive, isMass, selectedItems, startOperation, onClose }) {
   const [loading, setLoading] = useState(false);
-  const [visible, setVisible] = useState(false);
-  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    if (show) { setMounted(true); requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true))); }
-    else { setVisible(false); const t = setTimeout(() => setMounted(false), 250); return () => clearTimeout(t); }
-  }, [show]);
+  const { mounted, visible } = useModalTransition(show);
 
   if (!mounted) return null;
 

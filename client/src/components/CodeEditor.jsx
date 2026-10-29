@@ -11,35 +11,36 @@ function escapeHtml(str) {
 // Prism is slow on large files, so highlighting is debounced behind the textarea.
 const HIGHLIGHT_DELAY = 200;
 
+function highlightCode(text, language) {
+  let html = Prism.highlight(text, Prism.languages[language], language);
+  if (text.endsWith('\n')) html += '\n';
+  return html;
+}
+
 export default function CodeEditor({ value, onChange, language }) {
   const textareaRef = useRef(null);
   const preRef = useRef(null);
   const useHighlight = language && language !== 'plaintext' && !!Prism.languages[language];
 
-  const highlight = (text) => {
-    let html = Prism.highlight(text, Prism.languages[language], language);
-    if (text.endsWith('\n')) html += '\n';
-    return html;
-  };
-
   // Seed with the initial value highlighted so entering edit mode isn't a flash of plain text.
-  const [highlightHtml, setHighlightHtml] = useState(() => (useHighlight ? highlight(value) : ''));
-  const highlightedForRef = useRef(useHighlight ? value : null);
+  // `text` records which value `html` was produced from.
+  const [highlighted, setHighlighted] = useState(() => (
+    useHighlight ? { text: value, html: highlightCode(value, language) } : { text: null, html: '' }
+  ));
 
   useEffect(() => {
     if (!useHighlight) return;
-    if (highlightedForRef.current === value) return;
+    if (highlighted.text === value) return;
     const t = setTimeout(() => {
-      highlightedForRef.current = value;
-      setHighlightHtml(highlight(value));
+      setHighlighted({ text: value, html: highlightCode(value, language) });
     }, HIGHLIGHT_DELAY);
     return () => clearTimeout(t);
-  }, [value, language, useHighlight]);
+  }, [value, language, useHighlight, highlighted.text]);
 
   // Use the highlighted html only if it matches the current value; otherwise escape it.
   let body;
-  if (useHighlight && highlightedForRef.current === value) {
-    body = highlightHtml;
+  if (useHighlight && highlighted.text === value) {
+    body = highlighted.html;
   } else {
     body = escapeHtml(value);
     if (value.endsWith('\n')) body += '\n';

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useModalTransition } from '../../hooks/useModalTransition';
 
 export default function RenameModal({ show, name, path, drive, startOperation, onClose }) {
   const [value, setValue] = useState('');
@@ -15,13 +16,8 @@ export default function RenameModal({ show, name, path, drive, startOperation, o
     }
   }, [show, name]);
 
-  const [visible, setVisible] = useState(false);
-  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    if (show) { setMounted(true); requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true))); }
-    else { setVisible(false); const t = setTimeout(() => setMounted(false), 250); return () => clearTimeout(t); }
-  }, [show]);
+  const { mounted, visible } = useModalTransition(show);
 
   if (!mounted) return null;
 
