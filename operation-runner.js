@@ -1,14 +1,15 @@
 // Every perform* is idempotent: ops left unfinished by a crash are requeued on startup and re-run here.
-// Path helpers are injected from server.js via init() to avoid a circular require.
+// Path helpers are injected via init() so the runner can be driven with test fixtures.
 
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const tar = require('tar');
 const archiver = require('archiver');
 const logger = require('./logger');
 const store = require('./operation-store');
 const spaceCheck = require('./space-check');
+const { isValidItemName } = require('./paths');
+const { extractArchive, archiveKind, ExtractLimitError } = require('./archive-extract');
 
 const CONCURRENCY = 4;
 const COMPRESS_EXCLUDED_EXTENSIONS = ['.zip', '.gz', '.tar', '.tar.gz', '.rar', '.7z', '.bz2', '.xz'];
@@ -21,8 +22,25 @@ class OpError extends Error {
   }
 }
 
+// deps: { getSafePath(subpath, driveId, userId), isPathInside, findFreeTransferName,
+//         uniqueEntryNames, changed?(absPath) }. changed() is told about every path a
+// perform* added, removed or rewrote (cached folder sizes are dropped with it).
 let deps = {};
 function init(d) { deps = d || {}; }
+
+function changed(...paths) {
+  if (typeof deps.changed !== 'function') return;
+  for (const p of paths) if (p) deps.changed(p);
+}
+
+function requireItemName(name, what = 'item') {
+  if (!isValidItemName(name)) throw new OpError(400, `Invalid ${what} name.`);
+}
+
+// A name about to be created: never nested, on any platform.
+function requireNewName(name, what) {
+  if (!isValidItemName(name) || /[\\/]/.test(name)) throw new OpError(400, `Invalid ${what}.`);
+}
 
 // opts.fixedName pins the resolved target name across resumes; opts.strictConflict
 // reproduces the endpoint's 409 behavior.
@@ -30,6 +48,7 @@ async function performTransferItem(args, opts = {}) {
   const { userId, name, sourcePath = '/', sourceDrive = 'internal', destPath = '/', destDrive = 'internal', mode, conflict } = args;
   const strict = !!opts.strictConflict;
   if (!name) throw new OpError(400, 'Item name not provided.');
+  requireItemName(name);
   if (mode !== 'copy' && mode !== 'move') throw new OpError(400, 'Invalid transfer mode.');
 
   const sourceFullPath = deps.getSafePath(path.join(sourcePath, name), sourceDrive, userId);
@@ -89,13 +108,16 @@ async function performTransferItem(args, opts = {}) {
         throw renameErr;
       }
     }
+    changed(sourceFullPath);
   }
+  changed(destFullPath);
   return { destName };
 }
 
 // fixedName pins the target name across resumes.
 async function performDuplicate({ userId, name, path: currentPath = '/', drive = 'internal', fixedName } = {}) {
   if (!name) throw new OpError(400, 'Item name not provided.');
+  requireItemName(name);
   const sourcePath = deps.getSafePath(path.join(currentPath, name), drive, userId);
   if (!sourcePath || !fs.existsSync(sourcePath)) throw new OpError(404, 'Source not found.');
 
@@ -114,52 +136,48 @@ async function performDuplicate({ userId, name, path: currentPath = '/', drive =
     } while (fs.existsSync(destPath));
   }
   await fs.promises.cp(sourcePath, destPath, { recursive: true, force: true });
+  changed(destPath);
   return { copyName };
 }
 
 async function performDelete({ userId, name, path: currentPath = '/', drive = 'internal' } = {}) {
   if (!name) throw new OpError(400, 'Invalid target name.');
+  requireItemName(name, 'target');
   const fullPath = deps.getSafePath(path.join(currentPath, name), drive, userId);
   if (!fullPath) throw new OpError(400, 'Invalid path.');
   await fs.promises.rm(fullPath, { recursive: true, force: true });
+  changed(fullPath);
 }
 
-function extractZip(archivePath, destDir) {
-  const yauzl = require('yauzl');
-  return new Promise((resolve, reject) => {
-    yauzl.open(archivePath, { lazyEntries: true }, (err, zipfile) => {
-      if (err) return reject(err);
-      zipfile.on('entry', (entry) => {
-        if (entry.fileName.startsWith('__MACOSX/') || /\/$/.test(entry.fileName)) { zipfile.readEntry(); return; }
-        const sanitized = entry.fileName.replace(/[:*?"<>|]/g, '_').replace(/\.\.\//g, '');
-        const fullPath = path.join(destDir, sanitized);
-        fs.mkdirSync(path.dirname(fullPath), { recursive: true });
-        zipfile.openReadStream(entry, (err2, readStream) => {
-          if (err2) { zipfile.readEntry(); return; }
-          const ws = fs.createWriteStream(fullPath);
-          ws.on('finish', () => zipfile.readEntry());
-          ws.on('error', reject);
-          readStream.pipe(ws);
-        });
-      });
-      zipfile.on('end', resolve);
-      zipfile.on('error', reject);
-      zipfile.readEntry();
-    });
-  });
+// Writes `build(partial)` into a .partial sibling of finalPath, then renames it into place,
+// so a crash never leaves a half-written result under the real name. A failed build removes
+// its partial output instead of leaving it in the user's folder.
+async function buildThenRename(finalPath, opId, build) {
+  const partial = `${finalPath}.partial-${opId || crypto.randomBytes(6).toString('hex')}`;
+  await fs.promises.rm(partial, { recursive: true, force: true });
+  try {
+    await build(partial);
+    await fs.promises.rename(partial, finalPath);
+  } catch (err) {
+    await fs.promises.rm(partial, { recursive: true, force: true }).catch(() => {});
+    throw err;
+  }
+  changed(finalPath);
 }
 
-// Extract into a .partial path then rename, so a crash never leaves a half-populated
-// final folder. opts.strict gives the endpoint's 409 when that folder already exists.
+// opts.strict gives the endpoint's 409 when the target folder already exists.
 async function performExtract({ userId, name, path: currentPath = '/', drive = 'internal', opId } = {}, opts = {}) {
   if (!name) throw new OpError(400, 'Archive name not provided.');
+  requireItemName(name, 'archive');
   const targetBasePath = deps.getSafePath(currentPath || '/', drive, userId);
   if (!targetBasePath) throw new OpError(400, 'Invalid base path.');
-  if (!deps.getSafePath(path.join(currentPath || '/', name), drive, userId)) throw new OpError(400, 'Invalid file path.');
+  const archivePath = deps.getSafePath(path.join(currentPath || '/', name), drive, userId);
+  if (!archivePath) throw new OpError(400, 'Invalid file path.');
+  if (!archiveKind(name)) throw new OpError(400, 'Unsupported archive type.');
 
-  const archivePath = path.join(targetBasePath, name);
   const extension = path.extname(name).toLowerCase();
   const dirName = name.endsWith('.tar.gz') ? name.replace(/\.tar\.gz$/, '') : path.basename(name, extension);
+  if (!isValidItemName(dirName)) throw new OpError(400, 'Invalid archive name.');
   const extractToPath = path.join(targetBasePath, dirName);
 
   if (!fs.existsSync(archivePath)) throw new OpError(404, 'Archive file not found.');
@@ -168,23 +186,46 @@ async function performExtract({ userId, name, path: currentPath = '/', drive = '
     return; // resume: final folder present => already done
   }
 
-  const partial = `${extractToPath}.partial-${opId || crypto.randomBytes(6).toString('hex')}`;
-  await fs.promises.rm(partial, { recursive: true, force: true });
-  await fs.promises.mkdir(partial, { recursive: true });
-
-  if (extension === '.zip') {
-    await extractZip(archivePath, partial);
-  } else if (extension === '.gz' || name.endsWith('.tar.gz')) {
-    await tar.x({ file: archivePath, cwd: partial });
-  } else {
-    await fs.promises.rm(partial, { recursive: true, force: true });
-    throw new OpError(400, 'Unsupported archive type.');
+  // The archive may not use more than is free (less what other operations have reserved);
+  // unknown free space fails open, like the other space checks.
+  const budget = await spaceCheck.extractBudget(targetBasePath);
+  try {
+    await buildThenRename(extractToPath, opId, async (partial) => {
+      await fs.promises.mkdir(partial, { recursive: true });
+      const result = await extractArchive(archivePath, partial, budget || {});
+      if (result.skipped > 0) {
+        logger.info(`[Extract] Skipped ${result.skipped} link/special entr${result.skipped === 1 ? 'y' : 'ies'} in '${name}'`);
+      }
+    });
+  } catch (err) {
+    if (err instanceof ExtractLimitError) {
+      throw new spaceCheck.InsufficientSpaceError({
+        required: err.required,
+        available: budget ? budget.available : 0,
+        reserved: budget ? budget.reserved : 0,
+        driveId: drive,
+      });
+    }
+    throw err;
   }
-  await fs.promises.rename(partial, extractToPath);
+}
+
+function writeTarGz(partial, fill) {
+  return new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(partial);
+    const archive = archiver('tar', { gzip: true });
+    output.on('close', resolve);
+    output.on('error', reject);
+    archive.on('error', reject);
+    archive.pipe(output);
+    fill(archive);
+    archive.finalize().catch(reject);
+  });
 }
 
 async function performCompress({ userId, name, path: currentPath = '/', type, drive = 'internal', opId } = {}, opts = {}) {
   if (!name || !type) throw new OpError(400, 'Item name or type not provided.');
+  requireItemName(name);
   const sourcePath = deps.getSafePath(path.join(currentPath, name), drive, userId);
   if (!sourcePath || !fs.existsSync(sourcePath)) throw new OpError(404, 'Source item not found.');
   if (type === 'file' && COMPRESS_EXCLUDED_EXTENSIONS.includes(path.extname(name).toLowerCase())) {
@@ -195,20 +236,10 @@ async function performCompress({ userId, name, path: currentPath = '/', type, dr
     if (opts.strict) throw new OpError(409, 'Archive already exists.');
     return; // resume: archive already present => done
   }
-  const partial = `${outputPath}.partial-${opId || crypto.randomBytes(6).toString('hex')}`;
-  await fs.promises.rm(partial, { force: true });
-  await new Promise((resolve, reject) => {
-    const output = fs.createWriteStream(partial);
-    const archive = archiver('tar', { gzip: true });
-    output.on('close', resolve);
-    output.on('error', reject);
-    archive.on('error', reject);
-    archive.pipe(output);
+  await buildThenRename(outputPath, opId, (partial) => writeTarGz(partial, (archive) => {
     if (type === 'folder') archive.directory(sourcePath, false);
     else archive.file(sourcePath, { name });
-    archive.finalize();
-  });
-  await fs.promises.rename(partial, outputPath);
+  }));
 }
 
 // A compress op with several items builds one archive in op.destPath. Its name is picked
@@ -217,6 +248,7 @@ async function performCompressMany(op) {
   const destDir = deps.getSafePath(op.destPath || '/', op.destDrive, op.user);
   if (!destDir) throw new OpError(400, 'Invalid destination path.');
   const sources = op.items.map((it) => {
+    requireItemName(it.name);
     const src = deps.getSafePath(path.join(it.sourcePath || '/', it.name), it.sourceDrive, op.user);
     if (!src || !fs.existsSync(src)) throw new OpError(404, `'${it.name}' not found.`);
     return { name: it.name, src, isDirectory: fs.statSync(src).isDirectory() };
@@ -230,29 +262,20 @@ async function performCompressMany(op) {
     op.items.forEach((it) => store.setItemTarget(op.id, it.id, archiveName));
   }
 
-  const outputPath = path.join(destDir, archiveName);
-  const partial = `${outputPath}.partial-${op.id}`;
-  await fs.promises.rm(partial, { force: true });
   const entryNames = deps.uniqueEntryNames(sources);
-  await new Promise((resolve, reject) => {
-    const output = fs.createWriteStream(partial);
-    const archive = archiver('tar', { gzip: true });
-    output.on('close', resolve);
-    output.on('error', reject);
-    archive.on('error', reject);
-    archive.pipe(output);
+  await buildThenRename(path.join(destDir, archiveName), op.id, (partial) => writeTarGz(partial, (archive) => {
     sources.forEach(({ src, isDirectory }, i) => {
       if (isDirectory) archive.directory(src, entryNames[i]);
       else archive.file(src, { name: entryNames[i] });
     });
-    archive.finalize();
-  });
-  await fs.promises.rename(partial, outputPath);
+  }));
 }
 
 async function performRename({ userId, oldName, newName, path: currentPath = '/', drive = 'internal' } = {}) {
   if (!oldName || !newName) throw new OpError(400, 'Old and new names are required.');
-  if (newName.includes('/') || newName.includes('\\')) throw new OpError(400, 'Invalid characters in the new name.');
+  requireItemName(oldName);
+  if (/[\\/]/.test(newName)) throw new OpError(400, 'Invalid characters in the new name.');
+  requireNewName(newName, 'new name');
   if (oldName === newName) return;
   const sourcePath = deps.getSafePath(path.join(currentPath, oldName), drive, userId);
   const destPath = deps.getSafePath(path.join(currentPath, newName), drive, userId);
@@ -261,20 +284,23 @@ async function performRename({ userId, oldName, newName, path: currentPath = '/'
   if (!fs.existsSync(sourcePath)) throw new OpError(404, 'Source item not found.');
   if (fs.existsSync(destPath)) throw new OpError(409, 'An item with the new name already exists.');
   await fs.promises.rename(sourcePath, destPath);
+  changed(sourcePath, destPath);
 }
 
 async function performCreateFolder({ userId, folder, path: currentPath = '/', drive = 'internal' } = {}) {
-  if (!folder || /[\/\\]/.test(folder)) throw new OpError(400, 'Invalid folder name.');
+  requireNewName(folder, 'folder name');
   const fullPath = deps.getSafePath(path.join(currentPath, folder), drive, userId);
   if (!fullPath) throw new OpError(400, 'Invalid path.');
   await fs.promises.mkdir(fullPath, { recursive: true });
+  changed(fullPath);
 }
 
 async function performCreateFile({ userId, filename, path: currentPath = '/', drive = 'internal' } = {}) {
-  if (!filename || /[\/\\]/.test(filename)) throw new OpError(400, 'Invalid filename.');
+  requireNewName(filename, 'filename');
   const fullPath = deps.getSafePath(path.join(currentPath, filename), drive, userId);
   if (!fullPath) throw new OpError(400, 'Invalid path.');
   if (!fs.existsSync(fullPath)) await fs.promises.writeFile(fullPath, '');
+  changed(fullPath);
 }
 
 async function performItem(op, item) {
@@ -310,7 +336,6 @@ async function performItem(op, item) {
   }
 }
 
-let started = false;
 let stopped = false;
 let wakeResolve = null;
 
@@ -357,7 +382,10 @@ async function processOp(op) {
           await (combined ? performCompressMany(fresh) : performItem(fresh, group[0]));
           group.forEach((item) => store.itemDone(op.id, item.id));
         } catch (e) {
-          const msg = e && e.message ? e.message : String(e);
+          // Same shape as guardStart's refusal, which the client shows as a storage banner.
+          const msg = e instanceof spaceCheck.InsufficientSpaceError
+            ? `${e.message}. ${e.detail}`
+            : (e && e.message ? e.message : String(e));
           if (!firstError) firstError = msg;
           group.forEach((item) => store.itemFail(op.id, item.id, msg));
         }
@@ -380,25 +408,40 @@ async function processOp(op) {
   }
 }
 
+// processOp handles its own failures; a store error here (a busy or closed database) must
+// not end the loop for good, so it waits and tries again.
 async function loop() {
   while (!stopped) {
     let op = null;
-    try { op = store.nextPending(); } catch (e) { logger.error(`[OpRunner] nextPending failed: ${e.message}`); }
+    try {
+      op = store.nextPending();
+      if (op && !store.claim(op.id)) continue;
+    } catch (e) {
+      if (stopped) break;
+      logger.error(`[OpRunner] Could not fetch the next operation: ${e.message}`);
+      op = null;
+    }
     if (!op) { await idle(2000); continue; }
-    if (!store.claim(op.id)) continue;
     await processOp(op);
   }
 }
 
+let running = null; // the loop's promise while it runs
+
 function start() {
-  if (started) return;
-  started = true;
+  if (running) return;
   stopped = false;
-  loop();
+  running = loop()
+    .catch((e) => logger.error(`[OpRunner] Loop stopped unexpectedly: ${e && e.stack ? e.stack : e}`))
+    .finally(() => { running = null; });
 }
+
+// Resolves when the loop has exited; an item already in progress finishes first and is
+// left for the next start to resume if it couldn't be recorded.
 function stop() {
   stopped = true;
   wake();
+  return running || Promise.resolve();
 }
 
 module.exports = {

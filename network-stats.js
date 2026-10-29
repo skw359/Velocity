@@ -1,8 +1,8 @@
 const fs = require('fs').promises;
-const path = require('path');
+const config = require('./config');
 const logger = require('./logger');
 
-const STATS_FILE = path.join(__dirname, 'network_stats.csv');
+const STATS_FILE = config.NETWORK_STATS_FILE;
 const SAVE_INTERVAL_MS = 5000;
 
 let totalSent = 0;
@@ -15,13 +15,14 @@ let lastIntervalReceivedSpeed = 0;
 
 let saveIntervalId = null;
 
+// unref: a statistics tick must never be what keeps the process alive.
 setInterval(() => {
     lastIntervalSentSpeed = currentIntervalSent;
     lastIntervalReceivedSpeed = currentIntervalReceived;
-    
+
     currentIntervalSent = 0;
     currentIntervalReceived = 0;
-}, 1000);
+}, 1000).unref();
 
 function addSent(bytes) {
     if (typeof bytes !== 'number' || bytes < 0) return;

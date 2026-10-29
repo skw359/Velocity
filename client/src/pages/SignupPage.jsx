@@ -4,12 +4,14 @@ import AuthVisual from '../components/AuthVisual';
 import { apiAuthBootstrap, apiSignup } from '../api/fetch';
 import '../styles/login.css';
 
-// Open signup; the first account on an install becomes the owner.
+// The first account on an install becomes the owner. After that, sign-up is available
+// only if the server allows it (VELOCITY_SIGNUP=open); otherwise the owner adds accounts.
 export default function SignupPage({ onSignup }) {
   const navigate = useNavigate();
 
   const [checking, setChecking] = useState(true);
   const [isFirstAccount, setIsFirstAccount] = useState(false);
+  const [signupOpen, setSignupOpen] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -20,7 +22,12 @@ export default function SignupPage({ onSignup }) {
   useEffect(() => {
     let alive = true;
     apiAuthBootstrap()
-      .then((b) => { if (alive) { setIsFirstAccount(!b.hasUsers); setChecking(false); } })
+      .then((b) => {
+        if (!alive) return;
+        setIsFirstAccount(!b.hasUsers);
+        setSignupOpen(b.signupOpen !== false);
+        setChecking(false);
+      })
       .catch(() => { if (alive) { setError('Could not reach the server.'); setChecking(false); } });
     return () => { alive = false; };
   }, []);
@@ -50,6 +57,8 @@ export default function SignupPage({ onSignup }) {
     }
   };
 
+  const closed = !checking && !signupOpen;
+
   return (
     <div className="login-page">
       <div className="login-wrapper">
@@ -71,7 +80,19 @@ export default function SignupPage({ onSignup }) {
             </p>
           )}
 
-          <form onSubmit={handleSubmit}>
+          {closed && (
+            <div>
+              <p className="form-note">
+                This server doesn&apos;t allow sign-ups. Ask its owner to create an account for
+                you, then sign in with it.
+              </p>
+              <button type="button" className="login-button" onClick={() => navigate('/')}>
+                <span>Back to sign in</span>
+              </button>
+            </div>
+          )}
+
+          {!closed && <form onSubmit={handleSubmit}>
             <div className="input-group">
               <label htmlFor="new-username">Username</label>
               <input
@@ -111,7 +132,7 @@ export default function SignupPage({ onSignup }) {
                 Log in
               </button>
             </div>
-          </form>
+          </form>}
 
           <div className="form-footer"></div>
         </div>

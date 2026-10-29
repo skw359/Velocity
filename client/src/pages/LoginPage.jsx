@@ -9,13 +9,18 @@ export default function LoginPage({ onLogin }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false); // no accounts exist yet
+  const [signupOpen, setSignupOpen] = useState(false); // shown only once the server says so
   const formRef = useRef(null);
 
   // A fresh install has no accounts; send the first visitor to setup.
   useEffect(() => {
     let alive = true;
     apiAuthBootstrap()
-      .then((b) => { if (alive && !b.hasUsers) setNeedsSetup(true); })
+      .then((b) => {
+        if (!alive) return;
+        if (!b.hasUsers) setNeedsSetup(true);
+        setSignupOpen(b.signupOpen !== false);
+      })
       .catch(() => { /* leave the login form up; the error surfaces on submit */ });
     return () => { alive = false; };
   }, []);
@@ -88,12 +93,14 @@ export default function LoginPage({ onLogin }) {
                 )}
               </button>
 
-              <div className="form-alt">
-                Don&apos;t have an account?{' '}
-                <button type="button" className="link-button" onClick={() => navigate('/signup')}>
-                  Create one
-                </button>
-              </div>
+              {signupOpen && (
+                <div className="form-alt">
+                  Don&apos;t have an account?{' '}
+                  <button type="button" className="link-button" onClick={() => navigate('/signup')}>
+                    Create one
+                  </button>
+                </div>
+              )}
             </form>
           )}
 

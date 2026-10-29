@@ -1,8 +1,8 @@
 const fs = require('fs');
-const path = require('path');
+const config = require('./config');
 const logger = require('./logger');
 
-const STATS_FILE = path.join(__dirname, 'bandwidth-stats.json');
+const STATS_FILE = config.BANDWIDTH_FILE;
 
 // uploaded = bytes received by the server; downloaded = bytes sent by it.
 const stats = { uploaded: 0, downloaded: 0 };

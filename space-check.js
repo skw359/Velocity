@@ -12,7 +12,8 @@ const WALK_BATCH = 32;       // concurrent lstat calls while sizing a folder
 const DEFAULT_BLOCK = 4096;
 const MAX_BLOCK = 1024 * 1024;
 
-// deps: { getSafePath(subpath, driveId, userId), driveName(driveId), formatBytes(n) }
+// deps: { getSafePath(subpath, driveId, userId), driveName(driveId), formatBytes(n),
+//         freeBytes?(dir) } — freeBytes replaces the real free-space lookup (tests).
 let deps = {};
 function init(d) { deps = d || {}; }
 
@@ -85,6 +86,7 @@ async function volumeOf(dir) {
 }
 
 async function freeBytes(at) {
+  if (typeof deps.freeBytes === 'function') return deps.freeBytes(at);
   const { available } = await disk.check(at);
   return available;
 }
@@ -309,6 +311,21 @@ async function guardUploadFile(destFile, size, driveId) {
   }
 }
 
+// What an archive extracted into dir may use: free space less what other active
+// operations still have to write there. null when it can't be determined (fail open).
+async function extractBudget(dir) {
+  try {
+    const vol = await volumeOf(dir);
+    if (!vol) return null;
+    const available = await freeBytes(vol.at);
+    const reserved = await reservedOn(vol.dev);
+    return { maxBytes: Math.max(0, available - reserved), blockSize: vol.block, available, reserved };
+  } catch (e) {
+    logger.warn(`[Space] Could not size the extraction budget for ${dir}: ${e.message}`);
+    return null;
+  }
+}
+
 module.exports = {
   init,
   appliesTo,
@@ -317,6 +334,7 @@ module.exports = {
   guardStart,
   guardUploadFile,
   check,
+  extractBudget,
   // exposed for tests
   measure,
   footprint,

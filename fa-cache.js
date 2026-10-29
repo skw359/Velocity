@@ -1,4 +1,4 @@
-// Proxied and cached on disk rather than linked from the CDN, which the self-only CSP would block.
+// Proxied and cached on disk rather than linked from the CDN, which the app's CSP (security.js) doesn't allow.
 // Mounted at /vendor/fontawesome so the stylesheet's relative "../webfonts/*" URLs resolve back here.
 const fs = require('fs');
 const fsp = fs.promises;

@@ -6,7 +6,39 @@ on:
   pull_request:
 
 jobs:
-  build:
+  server:
+    name: Server tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # Lets the media tests run the real ffmpeg on a hostile filename, not just a stand-in.
+      - name: Install ffmpeg
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Install server dependencies
+        run: npm ci
+
+      - name: Check server syntax
+        shell: bash
+        run: for f in *.js routes/*.js tests/*.js tests/support/*.js; do node --check "$f"; done
+
+      - name: Run server tests
+        run: npm test
+
+  client:
+    name: Client lint and build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,9 +48,6 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: client/package-lock.json
-
-      - name: Check server syntax
-        run: for f in *.js; do node --check "$f"; done
 
       - name: Install client dependencies
         working-directory: client
