@@ -28,7 +28,7 @@ It runs on Windows and Linux.
 ## Requirements
 
 - Node.js 20 or newer.
-- Build tools for native modules (only needed on Linux). See [DEPLOY-UBUNTU.md](DEPLOY-UBUNTU.md).
+- No compiler for the usual platforms: every native module ships prebuilt binaries. Build tools are only a fallback for unusual systems; see [DEPLOY-UBUNTU.md](DEPLOY-UBUNTU.md).
 
 Optional tools add extra previews. Velocity runs fine without them, and the startup log tells you which are missing.
 
