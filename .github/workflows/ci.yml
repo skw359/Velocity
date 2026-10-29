@@ -13,8 +13,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        # 20 is the oldest version package.json supports; 24 is what install.sh deploys.
-        node: [20, 24]
+        # 22 is the oldest version package.json supports; 24 is what install.sh deploys.
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
 
@@ -47,7 +47,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: client/package-lock.json
 

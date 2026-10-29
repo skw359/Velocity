@@ -27,7 +27,7 @@ It runs on Windows and Linux.
 
 ## Requirements
 
-- Node.js 20 or newer.
+- Node.js 22.12 or newer. (Node 20 has reached end of life, and the SQLite driver no longer ships binaries for it.)
 - No compiler for the usual platforms: every native module ships prebuilt binaries. Build tools are only a fallback for unusual systems; see [DEPLOY-UBUNTU.md](DEPLOY-UBUNTU.md).
 
 Optional tools add extra previews. Velocity runs fine without them, and the startup log tells you which are missing.
